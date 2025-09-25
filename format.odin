@@ -9,24 +9,6 @@ import "base:runtime"
 import "core:reflect"
 import "core:hash/xxhash"
 
-test : struct {
-    a: [enum{ A, B, C}] int,
-    b: #simd [8] f16,
-    c: matrix [3,3] int,
-    d: union { int, f32, string },
-    e: map [string] f32,
-    f: int,
-    g: string,
-    h: ^int,
-    i: cstring,
-    j: [256] int,
-    k: struct {
-        l, m, n: f32,
-        o, p, r: [4] bool
-    }
-
-}
-
 lhs_clear :: proc() {
     clear(&window.lhs.names)      
     clear(&window.lhs.types)      
