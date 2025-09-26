@@ -15,9 +15,11 @@ Allocator :: mem.Allocator
 Duration  :: time.Duration
 Tick      :: time.Tick
 
-now  :: time.tick_now
-diff :: time.tick_diff
-cstr :: strings.clone_to_cstring
+now   :: time.tick_now
+diff  :: time.tick_diff
+sleep :: time.sleep
+ms    :: time.Millisecond
+cstr  :: strings.clone_to_cstring
 
 // box <-> box collision detection (used for rendering text only when box is visible on screen)
 AABB :: proc(a, a_size, b, b_size: Vector) -> bool {
@@ -49,6 +51,10 @@ rgba :: proc(hex: u32) -> Color {
     return { r, g, b, a }
 }
 
+find :: proc "c" (array: [] $T, elem: T) -> int {
+    for e, i in array do if e == elem do return i
+    return -1
+}
 
 // ====================================================================
 

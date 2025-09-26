@@ -9,19 +9,18 @@ import "base:runtime"
 import "core:reflect"
 import "core:hash/xxhash"
 
-lhs_clear :: proc() {
+lhs_clear :: proc(window: ^Window) {// {{{
     clear(&window.lhs.names)      
     clear(&window.lhs.types)      
     clear(&window.lhs.small_values)
-}
-
-lhs_add :: proc(name, type, value: string, allocator: Allocator) {// {{{
+}// }}}
+lhs_add :: proc(window: ^Window, name, type, value: string, allocator: Allocator) {// {{{
     append(&window.lhs.names,        strings.clone(name,  allocator))
     append(&window.lhs.types,        strings.clone(type,  allocator))
     append(&window.lhs.small_values, strings.clone(value, allocator))
 }// }}}
 
-format_value_small :: proc(value: any, level := 0) -> string {// {{{
+format_value_small :: proc(window: ^Window, value: any, level := 0) -> string {// {{{
     if value.data == nil do return "<nil>"
     if level > 15 do return "<self>"
 
@@ -29,53 +28,53 @@ format_value_small :: proc(value: any, level := 0) -> string {// {{{
 
     the_type := reflect.type_info_base(type_info_of(value.id))
     switch real_type in the_type.variant {
-    case reflect.Type_Info_Any:              text = format_value_small(value, level + 1)
+    case reflect.Type_Info_Any:              text = format_value_small(window, value, level + 1)
 
-    case reflect.Type_Info_Named:            text = format_basic(value)
-    case reflect.Type_Info_Integer:          text = format_basic(value) 
-    case reflect.Type_Info_Float:            text = format_basic(value) 
-    case reflect.Type_Info_Complex:          text = format_basic(value) 
-    case reflect.Type_Info_Quaternion:       text = format_basic(value) 
-    case reflect.Type_Info_Boolean:          text = format_basic(value) 
-    case reflect.Type_Info_Type_Id:          text = format_basic(value)
-    case reflect.Type_Info_Enum:             text = format_basic(value) 
-    case reflect.Type_Info_Bit_Set:          text = format_basic(value) 
-    case reflect.Type_Info_Bit_Field:        text = format_basic(value) 
-    case reflect.Type_Info_Procedure:        text = format_basic("proc")
+    case reflect.Type_Info_Named:            text = format_basic(window, value)
+    case reflect.Type_Info_Integer:          text = format_basic(window, value) 
+    case reflect.Type_Info_Float:            text = format_basic(window, value) 
+    case reflect.Type_Info_Complex:          text = format_basic(window, value) 
+    case reflect.Type_Info_Quaternion:       text = format_basic(window, value) 
+    case reflect.Type_Info_Boolean:          text = format_basic(window, value) 
+    case reflect.Type_Info_Type_Id:          text = format_basic(window, value)
+    case reflect.Type_Info_Enum:             text = format_basic(window, value) 
+    case reflect.Type_Info_Bit_Set:          text = format_basic(window, value) 
+    case reflect.Type_Info_Bit_Field:        text = format_basic(window, value) 
+    case reflect.Type_Info_Procedure:        text = format_basic(window, "proc")
 
-    case reflect.Type_Info_Rune:             text = format_string(value)
-    case reflect.Type_Info_String:           text = format_string(value) 
+    case reflect.Type_Info_Rune:             text = format_string(window, value)
+    case reflect.Type_Info_String:           text = format_string(window, value) 
 
-    case reflect.Type_Info_Pointer:          text = format_pointer(value) 
-    case reflect.Type_Info_Soa_Pointer:      text = format_pointer(value) 
-    case reflect.Type_Info_Multi_Pointer:    text = format_pointer(value) 
+    case reflect.Type_Info_Pointer:          text = format_pointer(window, value) 
+    case reflect.Type_Info_Soa_Pointer:      text = format_pointer(window, value) 
+    case reflect.Type_Info_Multi_Pointer:    text = format_pointer(window, value) 
 
-    case reflect.Type_Info_Array:            text = format_array(value) 
-    case reflect.Type_Info_Enumerated_Array: text = format_array(value)
-    case reflect.Type_Info_Dynamic_Array:    text = format_array(value)
-    case reflect.Type_Info_Slice:            text = format_array(value) 
-    case reflect.Type_Info_Simd_Vector:      text = format_array(value) 
-    case reflect.Type_Info_Matrix:           text = format_array(value) 
+    case reflect.Type_Info_Array:            text = format_array(window, value) 
+    case reflect.Type_Info_Enumerated_Array: text = format_array(window, value)
+    case reflect.Type_Info_Dynamic_Array:    text = format_array(window, value)
+    case reflect.Type_Info_Slice:            text = format_array(window, value) 
+    case reflect.Type_Info_Simd_Vector:      text = format_array(window, value) 
+    case reflect.Type_Info_Matrix:           text = format_array(window, value) 
 
-    case reflect.Type_Info_Struct:           text = format_struct(value)
-    case reflect.Type_Info_Union:            text = format_union(value)
-    case reflect.Type_Info_Map:              text = format_map(value)
+    case reflect.Type_Info_Struct:           text = format_struct(window, value)
+    case reflect.Type_Info_Union:            text = format_union(window, value)
+    case reflect.Type_Info_Map:              text = format_map(window, value)
     case reflect.Type_Info_Parameters:       text = "proc parameters"
     }
 
-    format_basic :: proc(value: any) -> string {// {{{
+    format_basic :: proc(window: ^Window, value: any) -> string {// {{{
         return fmt.aprint(value, allocator = window.tmp_alloc)
     }// }}}
 
-    format_string :: proc(value: any) -> string {// {{{
+    format_string :: proc(window: ^Window, value: any) -> string {// {{{
         return fmt.aprintf("%q", value, allocator = window.tmp_alloc)
     }// }}}
 
-    format_pointer :: proc(value: any) -> string {// {{{
+    format_pointer :: proc(window: ^Window, value: any) -> string {// {{{
         return fmt.aprintf("%p", value, allocator = window.tmp_alloc)
     }// }}}
 
-    format_array :: proc(array: any) -> string {// {{{
+    format_array :: proc(window: ^Window, array: any) -> string {// {{{
         builder := strings.builder_make(allocator = window.alloc)
 
         length := get_array_length(array)
@@ -94,7 +93,7 @@ format_value_small :: proc(value: any, level := 0) -> string {// {{{
 
         iterator: int
         for item, i in iterate_array(array, &iterator) {
-            formatted := format_value_small(item)
+            formatted := format_value_small(window, item)
             if len(formatted) + len(builder.buf) > window.small_value_limit {
                 strings.write_string(&builder, "..")
                 strings.write_int(&builder, length)
@@ -111,14 +110,14 @@ format_value_small :: proc(value: any, level := 0) -> string {// {{{
         return strings.to_string(builder)
     }// }}}
 
-    format_struct :: proc(value: any) -> string {// {{{
+    format_struct :: proc(window: ^Window, value: any) -> string {// {{{
         builder := strings.builder_make(allocator = window.alloc)
         strings.write_string(&builder, "{ ")
 
         fields := reflect.struct_fields_zipped(value.id) 
         for field, i in fields {
             member := reflect.struct_field_value(value, field)
-            formatted := format_value_small(member)
+            formatted := format_value_small(window, member)
             if len(formatted) + len(builder.buf) > window.small_value_limit {
                 strings.write_string(&builder, "..")
                 break
@@ -135,14 +134,14 @@ format_value_small :: proc(value: any, level := 0) -> string {// {{{
         return strings.to_string(builder)
     }// }}}
 
-    format_union :: proc(value: any) -> string {// {{{
+    format_union :: proc(window: ^Window, value: any) -> string {// {{{
         builder := strings.builder_make(window.tmp_alloc)
         fmt.sbprintf(&builder, "(%v) ", reflect.union_variant_type_info(value))
-        strings.write_string(&builder, format_value_small(reflect.get_union_variant(value)))
+        strings.write_string(&builder, format_value_small(window, reflect.get_union_variant(value)))
         return strings.to_string(builder)
     }// }}}
 
-    format_map :: proc(value: any) -> string {// {{{
+    format_map :: proc(window: ^Window, value: any) -> string {// {{{
         builder := strings.builder_make(window.tmp_alloc)
         length  := get_array_length(value)
         if length == 0 do return "[]"
@@ -154,8 +153,8 @@ format_value_small :: proc(value: any, level := 0) -> string {// {{{
 
         iterator: int
         for k, v in reflect.iterate_map(value, &iterator) {
-            key   := format_value_small(k)
-            value := format_value_small(v)
+            key   := format_value_small(window, k)
+            value := format_value_small(window, v)
 
             overall_length += len(key) + len(value) + 5 // ' = , '
             if overall_length > window.small_value_limit { 
@@ -178,60 +177,60 @@ format_value_small :: proc(value: any, level := 0) -> string {// {{{
     return text
 }// }}}
 
-format_value_big :: proc(value: any, level := 0) -> string {// {{{
+format_value_big :: proc(window: ^Window, value: any, level := 0) -> string {// {{{
     if value.data == nil do return "<nil>"
     if level > 15 do return "<self>"
     text : string
 
     the_type := reflect.type_info_base(type_info_of(value.id))
     switch real_type in the_type.variant {
-    case reflect.Type_Info_Any:              text = format_value_small(value, level + 1)
+    case reflect.Type_Info_Any:              text = format_value_small(window, value, level + 1)
 
-    case reflect.Type_Info_Named:            text = format_basic(value)
-    case reflect.Type_Info_Float:            text = format_basic(value) 
-    case reflect.Type_Info_Complex:          text = format_basic(value) 
-    case reflect.Type_Info_Quaternion:       text = format_basic(value) 
-    case reflect.Type_Info_Boolean:          text = format_basic(value) 
-    case reflect.Type_Info_Type_Id:          text = format_basic(value)
-    case reflect.Type_Info_Enum:             text = format_basic(value) 
-    case reflect.Type_Info_Bit_Set:          text = format_basic(value) 
-    case reflect.Type_Info_Bit_Field:        text = format_basic(value) 
-    case reflect.Type_Info_Procedure:        text = format_basic("proc")
+    case reflect.Type_Info_Named:            text = format_basic(window, value)
+    case reflect.Type_Info_Float:            text = format_basic(window, value) 
+    case reflect.Type_Info_Complex:          text = format_basic(window, value) 
+    case reflect.Type_Info_Quaternion:       text = format_basic(window, value) 
+    case reflect.Type_Info_Boolean:          text = format_basic(window, value) 
+    case reflect.Type_Info_Type_Id:          text = format_basic(window, value)
+    case reflect.Type_Info_Enum:             text = format_basic(window, value) 
+    case reflect.Type_Info_Bit_Set:          text = format_basic(window, value) 
+    case reflect.Type_Info_Bit_Field:        text = format_basic(window, value) 
+    case reflect.Type_Info_Procedure:        text = format_basic(window, "proc")
 
-    case reflect.Type_Info_Integer:          text = format_integer(value) 
-    case reflect.Type_Info_Rune:             text = format_string(value)
-    case reflect.Type_Info_String:           text = format_string(value) 
+    case reflect.Type_Info_Integer:          text = format_integer(window, value) 
+    case reflect.Type_Info_Rune:             text = format_string(window, value)
+    case reflect.Type_Info_String:           text = format_string(window, value) 
 
-    case reflect.Type_Info_Pointer:          text = format_pointer(value, level) 
-    case reflect.Type_Info_Soa_Pointer:      text = format_pointer(value, level) 
-    case reflect.Type_Info_Multi_Pointer:    text = format_pointer(value, level) 
+    case reflect.Type_Info_Pointer:          text = format_pointer(window, value, level) 
+    case reflect.Type_Info_Soa_Pointer:      text = format_pointer(window, value, level) 
+    case reflect.Type_Info_Multi_Pointer:    text = format_pointer(window, value, level) 
 
-    case reflect.Type_Info_Array:            text = format_array(value) 
-    case reflect.Type_Info_Enumerated_Array: text = format_array(value)
-    case reflect.Type_Info_Dynamic_Array:    text = format_array(value)
-    case reflect.Type_Info_Slice:            text = format_array(value) 
-    case reflect.Type_Info_Simd_Vector:      text = format_array(value) 
-    case reflect.Type_Info_Matrix:           text = format_matrix(value) 
+    case reflect.Type_Info_Array:            text = format_array(window, value) 
+    case reflect.Type_Info_Enumerated_Array: text = format_array(window, value)
+    case reflect.Type_Info_Dynamic_Array:    text = format_array(window, value)
+    case reflect.Type_Info_Slice:            text = format_array(window, value) 
+    case reflect.Type_Info_Simd_Vector:      text = format_array(window, value) 
+    case reflect.Type_Info_Matrix:           text = format_matrix(window, value) 
 
-    case reflect.Type_Info_Struct:           text = format_struct(value)
-    case reflect.Type_Info_Union:            text = format_union(value)
-    case reflect.Type_Info_Map:              text = format_map(value)
+    case reflect.Type_Info_Struct:           text = format_struct(window, value)
+    case reflect.Type_Info_Union:            text = format_union(window, value)
+    case reflect.Type_Info_Map:              text = format_map(window, value)
     case reflect.Type_Info_Parameters:       text = "proc parameters"
     }
 
-    format_basic :: proc(value: any) -> string {// {{{
+    format_basic :: proc(window: ^Window, value: any) -> string {// {{{
         return fmt.aprint(value, allocator = window.tmp_alloc)
     }// }}}
 
-    format_integer :: proc(value: any) -> string {// {{{
+    format_integer :: proc(window: ^Window, value: any) -> string {// {{{
         return fmt.aprintf("dec: %d\nhex: %x\noct: %o\nbin: %08b", value, value, value, value, allocator = window.tmp_alloc)
     }// }}}
 
-    format_string :: proc(value: any) -> string {// {{{
+    format_string :: proc(window: ^Window, value: any) -> string {// {{{
         return fmt.aprintf("%q \n===\n%s\n===", value, value, allocator = window.tmp_alloc)
     }// }}}
 
-    format_pointer :: proc(value: any, level := 0) -> string {// {{{
+    format_pointer :: proc(window: ^Window, value: any, level := 0) -> string {// {{{
         can_access  := ODIN_OS == .Linux
         can_access &&= value.data != nil
         is_invalid := !is_memory_safe(((^rawptr)(value.data))^, reflect.size_of_typeid(value.id), window.tmp_alloc)
@@ -242,12 +241,12 @@ format_value_big :: proc(value: any, level := 0) -> string {// {{{
         builder := strings.builder_make(window.tmp_alloc)    
         fmt.sbprintf(&builder, "%p\n", value)
         
-        strings.write_string(&builder, format_value_big(reflect.deref(value), level + 1))
+        strings.write_string(&builder, format_value_big(window, reflect.deref(value), level + 1))
 
         return strings.to_string(builder)
     }// }}}
 
-    format_array :: proc(array: any) -> string {// {{{
+    format_array :: proc(window: ^Window, array: any) -> string {// {{{
         builder := strings.builder_make(allocator = window.alloc)
 
         length := get_array_length(array)
@@ -266,7 +265,7 @@ format_value_big :: proc(value: any, level := 0) -> string {// {{{
 
         iterator: int
         for item, i in iterate_array(array, &iterator) {
-            formatted := format_value_small(item)
+            formatted := format_value_small(window, item)
             if len(formatted) + len(builder.buf) > window.small_value_limit {
                 strings.write_string(&builder, "..")
                 strings.write_int(&builder, length)
@@ -283,7 +282,7 @@ format_value_big :: proc(value: any, level := 0) -> string {// {{{
         return strings.to_string(builder)
     }// }}}
 
-    format_matrix :: proc(array: any) -> string {// {{{
+    format_matrix :: proc(window: ^Window, array: any) -> string {// {{{
         SPACE : [256] rune = ' '
         builder := strings.builder_make(allocator = window.alloc)
         type_info := reflect.type_info_base(type_info_of(array.id)).variant.(reflect.Type_Info_Matrix)
@@ -319,7 +318,7 @@ format_value_big :: proc(value: any, level := 0) -> string {// {{{
         return strings.to_string(builder)
     }// }}}
 
-    format_struct :: proc(value: any) -> string {// {{{
+    format_struct :: proc(window: ^Window, value: any) -> string {// {{{
         builder := strings.builder_make(allocator = window.alloc)
     
         fields := reflect.struct_fields_zipped(value.id) 
@@ -327,7 +326,7 @@ format_value_big :: proc(value: any, level := 0) -> string {// {{{
     
         for field, i in fields {
             member := to_any(ptr_add(value.data, field.offset), field.type.id)
-            members[i] = fmt.aprint(field.name, "=", format_value_small(member))
+            members[i] = fmt.aprint(field.name, "=", format_value_small(window, member))
         }
         
         for member in members {
@@ -337,14 +336,14 @@ format_value_big :: proc(value: any, level := 0) -> string {// {{{
         return strings.to_string(builder)
     }// }}}
 
-    format_union :: proc(value: any) -> string {// {{{
+    format_union :: proc(window: ^Window, value: any) -> string {// {{{
         builder := strings.builder_make(window.tmp_alloc)
         fmt.sbprintfln(&builder, "(%v)", reflect.union_variant_type_info(value))
-        strings.write_string(&builder, format_value_big(reflect.get_union_variant(value)))
+        strings.write_string(&builder, format_value_big(window, reflect.get_union_variant(value)))
         return strings.to_string(builder)
     }// }}}
 
-    format_map :: proc(value: any) -> string {// {{{
+    format_map :: proc(window: ^Window, value: any) -> string {// {{{
         builder := strings.builder_make(window.tmp_alloc)
         length  := get_array_length(value)
         if length == 0 do return "[ empty map ]"
@@ -353,8 +352,8 @@ format_value_big :: proc(value: any, level := 0) -> string {// {{{
 
         iterator: int
         for k, v in reflect.iterate_map(value, &iterator) {
-            key   := format_value_small(k)
-            value := format_value_small(v)
+            key   := format_value_small(window, k)
+            value := format_value_small(window, v)
 
             append(&pairs, strings.concatenate({ key, " = " , value }, window.tmp_alloc))
         }
@@ -372,44 +371,44 @@ format_value_big :: proc(value: any, level := 0) -> string {// {{{
     return text
 }// }}}
 
-format_value_binary :: proc(value: any, level := 0) -> string {// {{{
+format_value_binary :: proc(window: ^Window, value: any, level := 0) -> string {// {{{
     if value.data == nil do return "??"
     if level > 15 do return "<self>"
     text : string
 
     the_type := reflect.type_info_base(type_info_of(value.id))
     switch real_type in the_type.variant {
-    case reflect.Type_Info_Any:              text = format_value_small(value, level + 1)
+    case reflect.Type_Info_Any:              text = format_value_small(window, value, level + 1)
 
-    case reflect.Type_Info_Named:            text = format_basic(value)
-    case reflect.Type_Info_Float:            text = format_basic(value) 
-    case reflect.Type_Info_Complex:          text = format_basic(value) 
-    case reflect.Type_Info_Quaternion:       text = format_basic(value) 
-    case reflect.Type_Info_Boolean:          text = format_basic(value) 
-    case reflect.Type_Info_Type_Id:          text = format_basic(value)
-    case reflect.Type_Info_Enum:             text = format_basic(value) 
-    case reflect.Type_Info_Bit_Set:          text = format_basic(value) 
-    case reflect.Type_Info_Bit_Field:        text = format_basic(value) 
-    case reflect.Type_Info_Procedure:        text = format_basic(value)
-    case reflect.Type_Info_Integer:          text = format_basic(value) 
-    case reflect.Type_Info_Rune:             text = format_basic(value)
-    case reflect.Type_Info_Soa_Pointer:      text = format_basic(value) 
-    case reflect.Type_Info_Array:            text = format_basic(value) 
-    case reflect.Type_Info_Enumerated_Array: text = format_basic(value)
-    case reflect.Type_Info_Simd_Vector:      text = format_basic(value) 
-    case reflect.Type_Info_Matrix:           text = format_basic(value) 
-    case reflect.Type_Info_Union:            text = format_basic(value)
-    case reflect.Type_Info_Struct:           text = format_basic(value)
-    case reflect.Type_Info_Parameters:       text = format_basic(value)
+    case reflect.Type_Info_Named:            text = format_basic(window, value)
+    case reflect.Type_Info_Float:            text = format_basic(window, value) 
+    case reflect.Type_Info_Complex:          text = format_basic(window, value) 
+    case reflect.Type_Info_Quaternion:       text = format_basic(window, value) 
+    case reflect.Type_Info_Boolean:          text = format_basic(window, value) 
+    case reflect.Type_Info_Type_Id:          text = format_basic(window, value)
+    case reflect.Type_Info_Enum:             text = format_basic(window, value) 
+    case reflect.Type_Info_Bit_Set:          text = format_basic(window, value) 
+    case reflect.Type_Info_Bit_Field:        text = format_basic(window, value) 
+    case reflect.Type_Info_Procedure:        text = format_basic(window, value)
+    case reflect.Type_Info_Integer:          text = format_basic(window, value) 
+    case reflect.Type_Info_Rune:             text = format_basic(window, value)
+    case reflect.Type_Info_Soa_Pointer:      text = format_basic(window, value) 
+    case reflect.Type_Info_Array:            text = format_basic(window, value) 
+    case reflect.Type_Info_Enumerated_Array: text = format_basic(window, value)
+    case reflect.Type_Info_Simd_Vector:      text = format_basic(window, value) 
+    case reflect.Type_Info_Matrix:           text = format_basic(window, value) 
+    case reflect.Type_Info_Union:            text = format_basic(window, value)
+    case reflect.Type_Info_Struct:           text = format_basic(window, value)
+    case reflect.Type_Info_Parameters:       text = format_basic(window, value)
 
-    case reflect.Type_Info_Pointer:          text = format_pointer(value, level) 
-    case reflect.Type_Info_Multi_Pointer:    text = format_pointer(value, level) 
+    case reflect.Type_Info_Pointer:          text = format_pointer(window, value, level) 
+    case reflect.Type_Info_Multi_Pointer:    text = format_pointer(window, value, level) 
 
-    case reflect.Type_Info_Dynamic_Array:    text = format_array(value)
-    case reflect.Type_Info_Slice:            text = format_array(value) 
-    case reflect.Type_Info_String:           text = format_array(value) 
+    case reflect.Type_Info_Dynamic_Array:    text = format_array(window, value)
+    case reflect.Type_Info_Slice:            text = format_array(window, value) 
+    case reflect.Type_Info_String:           text = format_array(window, value) 
 
-    case reflect.Type_Info_Map:              text = format_map(value)
+    case reflect.Type_Info_Map:              text = format_map(window, value)
     }
     
     write_byte :: proc(builder: ^strings.Builder, num: byte) { // {{{
@@ -424,7 +423,7 @@ format_value_binary :: proc(value: any, level := 0) -> string {// {{{
         strings.write_bytes(builder, out[:])
     }// }}}
 
-    format_bytes :: proc(mem: [] byte) -> string { // {{{
+    format_bytes :: proc(window: ^Window, mem: [] byte) -> string { // {{{
         builder := strings.builder_make(window.tmp_alloc)
 
         for b in mem {
@@ -436,7 +435,7 @@ format_value_binary :: proc(value: any, level := 0) -> string {// {{{
         
     }// }}}
 
-    format_many_bytes :: proc(list: [][]byte) -> string { // {{{
+    format_many_bytes :: proc(window: ^Window, list: [][]byte) -> string { // {{{
         builder := strings.builder_make(window.tmp_alloc)
 
         for block in list {
@@ -449,12 +448,12 @@ format_value_binary :: proc(value: any, level := 0) -> string {// {{{
     
     }// }}}
 
-    format_basic :: proc(value: any) -> string { // {{{
+    format_basic :: proc(window: ^Window, value: any) -> string { // {{{
         data := mem.any_to_bytes(value)
-        return format_bytes(data)
+        return format_bytes(window, data)
     }// }}}
 
-    format_pointer :: proc(value: any, level: int) -> string { // {{{
+    format_pointer :: proc(window: ^Window, value: any, level: int) -> string { // {{{
         a := mem.any_to_bytes(value)
         
         can_access  := ODIN_OS == .Linux
@@ -462,10 +461,10 @@ format_value_binary :: proc(value: any, level := 0) -> string {// {{{
         can_access &&= is_memory_safe(((^rawptr)(value.data))^, reflect.size_of_typeid(value.id), window.tmp_alloc)
         b := mem.any_to_bytes(reflect.deref(value)) if can_access else {}
 
-        return format_many_bytes({ a, b })
+        return format_many_bytes(window, { a, b })
     } // }}} 
 
-    format_array :: proc(value: any) -> string { // {{{
+    format_array :: proc(window: ^Window, value: any) -> string { // {{{
         a := mem.any_to_bytes(value)
 
         start := ((^rawptr)(value.data))^
@@ -476,26 +475,30 @@ format_value_binary :: proc(value: any, level := 0) -> string {// {{{
         can_access &&= value.data != nil
         can_access &&= is_memory_safe(((^rawptr)(value.data))^, reflect.size_of_typeid(value.id), window.tmp_alloc)
 
-        return format_many_bytes({ a, b if can_access else {} })
+        return format_many_bytes(window, { a, b if can_access else {} })
     } // }}} 
 
-    format_map :: proc(value: any) -> string {// {{{
+    format_map :: proc(window: ^Window, value: any) -> string {// {{{
         // TODO
-        return format_basic(value)
+        return format_basic(window, value)
     }// }}}
 
     return text
 }// }}}
 
-HashState   :: ^xxhash.XXH32_state
+HashState :: struct {
+    window : ^Window,
+    hash   : ^xxhash.XXH32_state,
+}
+
 update_hash ::  xxhash.XXH32_update 
-hash :: proc(value: any, state: HashState = nil, level := 0) -> u32 {// {{{
+hash :: proc(value: any, state: HashState, level := 0) -> u32 {// {{{
     original_state := state
     state := state
-    if state == nil do state, _ = xxhash.XXH32_create_state(window.tmp_alloc) 
+    if state.hash == nil do state.hash, _ = xxhash.XXH32_create_state(state.window.tmp_alloc) 
 
     if level > 4 {
-        assert(original_state != nil)
+        assert(original_state.hash != nil)
         return 0
     }
 
@@ -536,13 +539,13 @@ hash :: proc(value: any, state: HashState = nil, level := 0) -> u32 {// {{{
     }
 
     hash_basic :: proc(state: HashState, value: any, caller := #caller_location) {
-        update_hash(state, mem.any_to_bytes(value))
+        update_hash(state.hash, mem.any_to_bytes(value))
     }
 
     hash_pointer :: proc(state: HashState, value: any, level: int) {
         can_access  := ODIN_OS == .Linux
         can_access &&= (^rawptr)(value.data) != nil
-        can_access &&= is_memory_safe(((^rawptr)(value.data))^, reflect.size_of_typeid(value.id), window.tmp_alloc)
+        can_access &&= is_memory_safe(((^rawptr)(value.data))^, reflect.size_of_typeid(value.id), state.window.tmp_alloc)
 
         if can_access do hash_array(state, value, level + 1) 
         else do          hash_basic(state, value) 
@@ -574,7 +577,7 @@ hash :: proc(value: any, state: HashState = nil, level := 0) -> u32 {// {{{
         }
     }
 
-    if original_state == nil do return xxhash.XXH32_digest(state)
+    if original_state.hash == nil do return xxhash.XXH32_digest(state.hash)
     else do return 0
 }// }}}
 

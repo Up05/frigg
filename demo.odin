@@ -36,7 +36,9 @@ main :: proc() {
     // test.h = (^int)(uintptr(0x1234))
     test.h = &test.f
     test.i = "c_string"
-    watch(test, &window)
+    window := watch(test)
+
+    for !render_frame_for_all() { }
 
     // start_rendering()
 
