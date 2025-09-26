@@ -227,7 +227,8 @@ format_value_big :: proc(window: ^Window, value: any, level := 0) -> string {// 
     }// }}}
 
     format_string :: proc(window: ^Window, value: any) -> string {// {{{
-        return fmt.aprintf("%q \n===\n%s\n===", value, value, allocator = window.tmp_alloc)
+        ihatemylife, _ := strings.replace_all(fmt.aprint(value), " ", "\u2002", allocator = window.tmp_alloc)
+        return fmt.aprintf("%q \n\n```\n%s\n```", value, ihatemylife, allocator = window.tmp_alloc)
     }// }}}
 
     format_pointer :: proc(window: ^Window, value: any, level := 0) -> string {// {{{
@@ -236,10 +237,10 @@ format_value_big :: proc(window: ^Window, value: any, level := 0) -> string {// 
         is_invalid := !is_memory_safe(((^rawptr)(value.data))^, reflect.size_of_typeid(value.id), window.tmp_alloc)
         can_access &&= !is_invalid
         
-        if is_invalid  do return fmt.aprintf("%p\n<invalid pointer>", value, allocator = window.tmp_alloc)
-        if !can_access do return fmt.aprintf("%p", value, allocator = window.tmp_alloc)
+        if is_invalid  do return fmt.aprintf("<%p>\n<invalid pointer>", value, allocator = window.tmp_alloc)
+        if !can_access do return fmt.aprintf("<%p>", value, allocator = window.tmp_alloc)
         builder := strings.builder_make(window.tmp_alloc)    
-        fmt.sbprintf(&builder, "%p\n", value)
+        fmt.sbprintf(&builder, "<%p>\n", value)
         
         strings.write_string(&builder, format_value_big(window, reflect.deref(value), level + 1))
 
@@ -283,7 +284,7 @@ format_value_big :: proc(window: ^Window, value: any, level := 0) -> string {// 
     }// }}}
 
     format_matrix :: proc(window: ^Window, array: any) -> string {// {{{
-        SPACE : [256] rune = ' '
+        SPACE : [256] rune = '\u2002'
         builder := strings.builder_make(allocator = window.alloc)
         type_info := reflect.type_info_base(type_info_of(array.id)).variant.(reflect.Type_Info_Matrix)
     
@@ -309,8 +310,8 @@ format_value_big :: proc(window: ^Window, value: any, level := 0) -> string {// 
                 
                 _, is_float := type_info.elem.variant.(reflect.Type_Info_Float)
                 
-                if is_float do fmt.sbprintf(&builder, "%s %.2f", SPACE[:longest[i] - lengths[index]], value, )
-                else do        fmt.sbprintf(&builder, "%s %v",   SPACE[:longest[i] - lengths[index]], value, )
+                if is_float do fmt.sbprintf(&builder, "%s\u2002%.2f", SPACE[:longest[i] - lengths[index]], value, )
+                else do        fmt.sbprintf(&builder, "%s\u2002%v",   SPACE[:longest[i] - lengths[index]], value, )
             }
             strings.write_rune(&builder, '\n')
         }
@@ -442,7 +443,7 @@ format_value_binary :: proc(window: ^Window, value: any, level := 0) -> string {
             for b in block {
                 write_byte(&builder, b)
             }
-            strings.write_string(&builder, "\n\n")
+            // strings.write_string(&builder, "\n\n")
         }
         return strings.to_string(builder)
     

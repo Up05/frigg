@@ -9,6 +9,9 @@ import "core:strings"
 import "core:time"
 import "core:os"
 
+import "core:math/rand"
+import "core:math"
+
 import "core:sys/linux"
 
 Allocator :: mem.Allocator
@@ -51,9 +54,70 @@ rgba :: proc(hex: u32) -> Color {
     return { r, g, b, a }
 }
 
+back :: proc(array: [dynamic] $T) -> T {
+    return array[len(array) - 1]
+} 
+
 find :: proc "c" (array: [] $T, elem: T) -> int {
     for e, i in array do if e == elem do return i
     return -1
+}
+
+hsl_to_rgb :: proc(h, s, l: f32) -> (rgb: [4] f32) {
+    hue_to_rgb :: proc(p, q, t: f32) -> f32 {
+        p := p; q := q; t := t
+        if t < 0    do t += 1
+        if t > 1    do t -= 1
+        if t < 1./6 do return p + (q - p) * 6 * t
+        if t < 1./2 do return q
+        if t < 2./3 do return p + (q - p) * (2./3 - t) * 6
+        return p
+    }
+
+    if s == 0 { return { l, l, l, 1 } }
+    
+    q := l * (1 + s) if l < 0.5 else l + s - l * s;
+    p := 2 * l - q;
+
+    rgb.r = hue_to_rgb(p, q, h + 1./3)
+    rgb.g = hue_to_rgb(p, q, h)
+    rgb.b = hue_to_rgb(p, q, h - 1./3)
+    rgb.a = 1
+
+    return
+}
+
+color_stack: [dynamic] f32
+color_upper: bool = false
+color_level: int  = 2
+make_color_palette :: proc(window: ^Window) {
+    h: f32
+
+    get_next_color :: proc() -> f32 {
+        delta := 1 / f32(color_level)
+        return color_stack[0] + (delta if color_upper else -delta)
+    }
+
+
+    if len(color_stack) == 0 {
+        append(&color_stack, 1)
+    }
+
+    h = get_next_color()
+    append(&color_stack, h)
+    
+    if !color_upper {
+        pop_front(&color_stack)
+        color_level *= 2
+    }
+    
+    color_upper = !color_upper
+
+    window.bg  = hsl_to_rgb(h, 0.1, 0.05)
+    window.hl  = hsl_to_rgb(h, 0.3, 0.25)
+    window.fg  = hsl_to_rgb(h, 0.6, 0.95)
+    window.bin = hsl_to_rgb(get_next_color(), 0.8, 0.8 )
+
 }
 
 // ====================================================================
@@ -179,3 +243,66 @@ get_array_stride :: proc(array: any) -> int {// {{{
     }
     return 0
 }// }}}
+
+
+
+// TRASH
+
+/*
+oklab_to_rgb :: proc(L, a, b: f32) -> [4] f32 {
+    l_ := L + 0.3963377774 * a + 0.2158037573 * b
+    m_ := L - 0.1055613458 * a - 0.0638541728 * b
+    s_ := L - 0.0894841775 * a - 1.2914855480 * b
+
+    l := l_ * l_ * l_
+    m := m_ * m_ * m_
+    s := s_ * s_ * s_
+
+    return {
+        +4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+        -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+        -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s,
+        1
+    } 
+}
+
+oklch_to_rgb :: proc(L, a, r: f32) -> [4] f32 {
+    L := L
+    b, a := math.sincos(a)
+    b *= r; a *= r
+    return oklab_to_rgb(L, a, b)
+}
+
+make_color_palette :: proc(window: ^Window) {
+    L := rand.float32() / 16
+    a := rand.float32() * math.TAU
+    r := rand.float32() * 0.4 / 8
+
+    dL := rand.float32() / 16 + 0.38
+    dr := rand.float32() /  6 + 0.15
+
+    window.palette.bg = oklch_to_rgb(L + 0.12, a, r + 0.15)
+    window.palette.hl = oklch_to_rgb(L +   dL, a, r +   dr)
+    window.palette.fg = oklch_to_rgb(L + 3*dL, a, r + 2*dr)
+
+    window.palette.bin = oklch_to_rgb(L + dL, a + 0.15, r + 2*dr)
+
+    window.fg.r = min(window.fg.r, 0.95)
+    window.fg.g = min(window.fg.g, 0.95)
+    window.fg.b = min(window.fg.b, 0.95)
+
+    window.bin.r = min(window.bin.r, 0.95)
+    window.bin.g = min(window.bin.g, 0.95)
+    window.bin.b = min(window.bin.b, 0.95)
+}
+ 
+ 
+*/
+
+
+
+
+
+
+
+
