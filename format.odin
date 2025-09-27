@@ -19,6 +19,10 @@ lhs_add :: proc(window: ^Window, name, type, value: string, allocator: Allocator
     append(&window.lhs.types,        strings.clone(type,  allocator))
     append(&window.lhs.small_values, strings.clone(value, allocator))
 }// }}}
+lhs_comment :: proc(window: ^Window, comment: string) {// {{{
+    if len(window.lhs.small_values) == 0 do return
+    window.lhs.small_values[0] = strings.clone(comment, window.lhs_alloc)
+}// }}}
 
 format_value_small :: proc(window: ^Window, value: any, level := 0) -> string {// {{{
     if value.data == nil do return "<nil>"
@@ -239,6 +243,7 @@ format_value_big :: proc(window: ^Window, value: any, level := 0) -> string {// 
         
         if is_invalid  do return fmt.aprintf("<%p>\n<invalid pointer>", value, allocator = window.tmp_alloc)
         if !can_access do return fmt.aprintf("<%p>", value, allocator = window.tmp_alloc)
+
         builder := strings.builder_make(window.tmp_alloc)    
         fmt.sbprintf(&builder, "<%p>\n", value)
         
@@ -582,4 +587,153 @@ hash :: proc(value: any, state: HashState, level := 0) -> u32 {// {{{
     else do return 0
 }// }}}
 
+
+
+update_lhs :: proc(window: ^Window) {// {{{
+    if !window.refresh && window.frame % (TARGET_FPS / 6) != 0 do return
+    window.lhs.hidden = false
+    lhs_clear(window)
+    free_all(window.lhs_alloc)
+    value := window.lhs.viewed
+    lhs_add(window, window.lhs.parent_names[len(window.lhs.parent_names) - 1], "", "", window.lhs_alloc)
+
+    the_type := reflect.type_info_base(type_info_of(value.id))
+    #partial switch real_type in the_type.variant {
+
+    case reflect.Type_Info_Struct:
+        for field, i in reflect.struct_fields_zipped(value.id) {
+            name := fmt.aprint(field.name, allocator = window.alloc)
+            type := soft_up_to(fmt.aprint(field.type, allocator = window.alloc), 24)
+            data := format_value_small(window, to_any(ptr_add(value.data, field.offset), field.type.id))
+            lhs_add(window, name, type, data, window.lhs_alloc)
+
+            if i + 1 == window.lhs.cursor { 
+                window.rhs.viewed = {
+                    name = strings.clone(field.name, window.alloc),
+                    type = soft_up_to(fmt.aprint(field.type, allocator = window.alloc), 24),
+                    value = to_any(ptr_add(value.data, field.offset), field.type.id) 
+                }
+            }
+        }
+
+    case reflect.Type_Info_Map:
+        lhs_comment(window, "(sorted by frigg)")
+        results := make([dynamic] [2]string, window.tmp_alloc)
+
+        iterator: int
+        for k, v in reflect.iterate_map(value, &iterator) {
+            name := format_value_small(window, k)
+            data := format_value_small(window, v)
+
+            insertion_point := 0
+            for result, i in results {
+                if result[0] > name {
+                    insertion_point = i
+                    break
+                }
+            }
+            inject_at(&results, insertion_point, [2]string { name, data })
+
+            if iterator + 1 == window.lhs.cursor { 
+                window.rhs.viewed = {
+                    name  = strings.clone(name, window.alloc),
+                    type  = soft_up_to(fmt.aprint(k.id, "<=>", v.id, allocator = window.alloc), 24),
+                    value = v
+                }
+            }
+        }
+
+        for result in results {
+            lhs_add(window, result[0], "", result[1], window.lhs_alloc)
+        }
+
+    case reflect.Type_Info_Slice, reflect.Type_Info_Array, reflect.Type_Info_Dynamic_Array,
+        reflect.Type_Info_Matrix, reflect.Type_Info_Simd_Vector:
+        iterator: int
+        for elem, i in iterate_array(value, &iterator) {
+            name  := fmt.aprint(i, allocator = window.tmp_alloc)
+            value := format_value_small(window, elem)
+            lhs_add(window, name, "", value, window.lhs_alloc)
+
+            if i + 1 == window.lhs.cursor { 
+                window.rhs.viewed = {
+                    name = name,
+                    type = soft_up_to(fmt.aprint(elem.id, allocator = window.lhs_alloc), 24),
+                    value = elem,   
+                }
+            }
+        }
+    case reflect.Type_Info_Enumerated_Array:
+        iterator: int
+        for elem, i in iterate_array(value, &iterator) {
+            the_index := i
+            name  := reflect.enum_name_from_value_any(to_any(&the_index, real_type.index.id)) or_else "BAD ENUM"
+            index := fmt.aprint(i, allocator = window.tmp_alloc)
+            value := format_value_small(window, elem)
+            lhs_add(window, name, index, value, window.lhs_alloc)
+
+            if i + 1 == window.lhs.cursor { 
+                window.rhs.viewed = {
+                    name = name,
+                    type = soft_up_to(fmt.aprint(elem.id, allocator = window.lhs_alloc), 24),
+                    value = elem,   
+                }
+            }
+        }
+
+    case reflect.Type_Info_Pointer:
+
+        for i in 0..<15 {
+            if !can_deref(window, value) {
+                window.lhs.viewed = value
+                break   
+            }
+
+            value = reflect.deref(value)
+
+            if !reflect.is_pointer(type_info_of(value.id)) { 
+                if value != nil do window.lhs.viewed = value
+                update_lhs(window)
+                return
+            }
+
+            window.lhs.viewed = value
+        }
+
+        window.lhs.hidden = true
+
+    case reflect.Type_Info_Named:       lhs_add(window, "", "", "", window.lhs_alloc); window.lhs.hidden = true
+    case reflect.Type_Info_Integer:     lhs_add(window, "", "", "", window.lhs_alloc); window.lhs.hidden = true 
+    case reflect.Type_Info_Float:       lhs_add(window, "", "", "", window.lhs_alloc); window.lhs.hidden = true 
+    case reflect.Type_Info_Complex:     lhs_add(window, "", "", "", window.lhs_alloc); window.lhs.hidden = true 
+    case reflect.Type_Info_Quaternion:  lhs_add(window, "", "", "", window.lhs_alloc); window.lhs.hidden = true 
+    case reflect.Type_Info_Boolean:     lhs_add(window, "", "", "", window.lhs_alloc); window.lhs.hidden = true 
+    case reflect.Type_Info_Type_Id:     lhs_add(window, "", "", "", window.lhs_alloc); window.lhs.hidden = true
+    case reflect.Type_Info_Enum:        lhs_add(window, "", "", "", window.lhs_alloc); window.lhs.hidden = true 
+    case reflect.Type_Info_Bit_Set:     lhs_add(window, "", "", "", window.lhs_alloc); window.lhs.hidden = true 
+    case reflect.Type_Info_Bit_Field:   lhs_add(window, "", "", "", window.lhs_alloc); window.lhs.hidden = true 
+    case reflect.Type_Info_Procedure:   lhs_add(window, "", "", "", window.lhs_alloc); window.lhs.hidden = true
+    case reflect.Type_Info_Rune:        lhs_add(window, "", "", "", window.lhs_alloc); window.lhs.hidden = true
+    case reflect.Type_Info_String:      lhs_add(window, "", "", "", window.lhs_alloc); window.lhs.hidden = true
+    case reflect.Type_Info_Soa_Pointer: lhs_add(window, "", "", "", window.lhs_alloc); window.lhs.hidden = true      
+    case: 
+        window.lhs.hidden = true
+        fmt.println("bad value for visualization for now:", value)
+    }
+}// }}}
+
+update_rhs :: proc(window: ^Window) {// {{{
+    if !window.refresh && window.frame % (TARGET_FPS / 6) != 0 do return
+    free_all(window.rhs_alloc)
+
+    cursor := window.lhs.cursor
+    field  := window.rhs.viewed
+    value  := field.value
+
+    window.rhs.name = strings.clone(field.name, window.rhs_alloc)
+    window.rhs.type = strings.clone(field.type, window.rhs_alloc)
+    window.rhs.value = strings.clone(format_value_big(window, value), window.rhs_alloc)
+    window.rhs.binary = strings.clone(format_value_binary(window, value), window.rhs_alloc)   
+
+}// }}}
 

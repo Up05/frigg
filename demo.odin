@@ -3,6 +3,7 @@ package main
 import "core:fmt"
 
 test : struct {
+    z: [2048] int,
     a: [enum{ A, B, C}] int,
     b: #simd [8] f16,
     c: matrix [3,3] int,
@@ -15,8 +16,14 @@ test : struct {
     j: [256] int,
     k: struct {
         l, m, n: f32,
-        o, p, r: [4] bool
-    }
+        o, p, r: [4] bool,
+        big: [1024] int
+    },
+    m: ^struct {
+        n: ^struct {
+            o: int,
+        }
+    },
 }
 
 main :: proc() {
@@ -25,7 +32,7 @@ main :: proc() {
     test.b = 4
     test.d = "str"
 
-    for i in 0..<64 { test.e[fmt.aprintf("test key #%d", i)] = 3.14159 * f32(i) }
+    for i in 0..<640 { test.e[fmt.aprintf("test key #%d", i)] = 3.14159 * f32(i) }
     test.f = 42
     test.g = "str2"
     test.c = {
@@ -36,9 +43,12 @@ main :: proc() {
     // test.h = (^int)(uintptr(0x1234))
     test.h = &test.f
     test.i = "c_string"
-    window := watch(test, true)
+    test.m = new(type_of(test.m^))
+    // test.m.n = new(type_of(test.m.n^))
 
-    for !render_frame_for_all() { }
+    window := watch(test, false)
+
+    for !render_frame_for_all() { test.z[1] += 1 }
 
     // start_rendering()
 

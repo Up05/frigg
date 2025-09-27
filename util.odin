@@ -116,7 +116,7 @@ make_color_palette :: proc(window: ^Window) {
     window.bg  = hsl_to_rgb(h, 0.1, 0.05)
     window.hl  = hsl_to_rgb(h, 0.3, 0.25)
     window.fg  = hsl_to_rgb(h, 0.6, 0.95)
-    window.bin = hsl_to_rgb(get_next_color(), 0.8, 0.8 )
+    window.bin = hsl_to_rgb(get_next_color(), 0.4, 0.7 )
 
 }
 
@@ -145,6 +145,16 @@ is_memory_safe :: proc(pointer: rawptr, size: int, allocator: Allocator) -> bool
 
     return true
 }// }}}
+
+can_deref :: proc(window: ^Window, value: any) -> bool {
+    can_access  := ODIN_OS == .Linux
+    can_access &&= value.data != nil
+    can_access &&= (^rawptr)(value.data)^ != nil
+    is_invalid := !is_memory_safe(((^rawptr)(value.data))^, reflect.size_of_typeid(value.id), window.tmp_alloc)
+    can_access &&= !is_invalid
+    return can_access
+}
+
 
 @(require_results)
 iterate_array :: proc(val: any, it: ^int) -> (elem: any, index: int, ok: bool) {// {{{
