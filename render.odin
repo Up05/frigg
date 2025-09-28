@@ -286,6 +286,7 @@ render_frame :: proc(window: ^Window) {// {{{
         update_lhs(window)
         update_rhs(window)
         window.refresh = false
+        post_empty_event()
     }
 
     handle_keyboard(window)
@@ -450,7 +451,14 @@ handle_keyboard :: proc(window: ^Window) {// {{{
             window.refresh = true
         }
 
-        selected_item_name := window.lhs.names[window.lhs.cursor]
+        if len(window.lhs.names) == 1 {
+            window.lhs.cursor = pop(&window.lhs.parent_cursor)
+            window.lhs.viewed = pop(&window.lhs.parents)
+            pop(&window.lhs.parent_names)
+            window.refresh = true
+        }
+
+        selected_item_name := window.lhs.names[window.lhs.cursor] 
 
         if key(glfw.KEY_ENTER) || key(glfw.KEY_RIGHT) {
             reset_scroll(window)
@@ -518,10 +526,9 @@ handle_scrolling :: proc(window: ^Window, scroll: ^Scroll, pos, size: Vector) {/
     scroll.pos = { max(scroll.pos.x, 0),     max(scroll.pos.y, 0) }
     scroll.pos = { min(scroll.pos.x, end.x), min(scroll.pos.y, end.y) }
 
-    // I don't know... glfw resets KEY_REPEAT if you post empty event...
-    // if scroll.vel.y > 0.1 {
-    //     glfw.PostEmptyEvent()
-    // }
+    if scroll.vel.y > 0.1 {
+        post_empty_event()
+    }
 
     if draw_vertical { 
         track_pos  : Vector = pos + { size.x - width, 0 }
@@ -651,6 +658,14 @@ text_width :: proc(window: ^Window, text: string) -> f32 {// {{{
 }// }}}
 scissor :: proc(window: ^Window, pos, size: Vector) {// {{{
     nvg.Scissor(window.ctx, pos.x, pos.y, size.x, size.y)
+}// }}}
+post_empty_event :: proc() {// {{{
+    // Wayland:
+    //   1. ignores WaitEventsTimeout
+    //   2. resets KEY_REPEAT on PostEmptyEvent
+
+    if are_we_wayland() do return
+    glfw.PostEmptyEvent()
 }// }}}
 
 is_key_down     :: proc "c" (key: i32) -> bool { return find(events.down[:events.num_down], key) != -1 }

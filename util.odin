@@ -336,6 +336,11 @@ get_array_stride :: proc(array: any) -> int {// {{{
     return 0
 }// }}}
 
+are_we_wayland :: proc() -> bool {
+    result := os.get_env("WAYLAND_DISPLAY")
+    defer delete_string(result)
+    return result != ""
+}
 
 // TRASH
 
