@@ -24,6 +24,8 @@ sleep :: time.sleep
 ms    :: time.Millisecond
 cstr  :: strings.clone_to_cstring
 
+eat :: proc(v: $T, e: any) -> T { return v }
+
 // box <-> box collision detection (used for rendering text only when box is visible on screen)
 AABB :: proc(a, a_size, b, b_size: Vector) -> bool {// {{{
     return  (a.x <= b.x + b_size.x && a.x + a_size.x >= b.x) &&

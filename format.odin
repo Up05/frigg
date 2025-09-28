@@ -198,7 +198,7 @@ format_value_small :: proc(window: ^Window, value: any, level := 0) -> string {/
 
         iterator: int
         for k, v in reflect.iterate_map(value, &iterator) {
-            if find(ignored[:], hash_any_simple(k)) != -1 do continue 
+            if find(ignored[:], hash_any_string(k)) != -1 do continue 
 
             key   := format_value_small(window, k)
             value := format_value_small(window, v)
@@ -454,7 +454,7 @@ format_value_big :: proc(window: ^Window, value: any, level := 0) -> string {// 
 
         iterator: int
         for k, v in reflect.iterate_map(value, &iterator) {
-            if find(ignored[:], hash_any_simple(k)) != -1 do continue
+            if find(ignored[:], hash_any_string(k)) != -1 do continue
             key   := format_value_small(window, k)
             value := format_value_small(window, v)
 
@@ -464,7 +464,7 @@ format_value_big :: proc(window: ^Window, value: any, level := 0) -> string {// 
         // quick-enough sort
         for i in 0..<len(pairs) {
             for j in i+1..<len(pairs) {
-                if pairs[i] < pairs[j] do pairs[i], pairs[j] = pairs[j], pairs[i]
+                if pairs[i] > pairs[j] do pairs[i], pairs[j] = pairs[j], pairs[i]
             }
         }
 
@@ -692,9 +692,10 @@ hash :: proc(value: any, state: HashState, level := 0) -> u32 {// {{{
 hash_string :: proc(str: string) -> u32 {// {{{
     return xxhash.XXH32(transmute([] byte) str)
 }// }}}
-hash_any_simple :: proc(value: any) -> u32 {// {{{
-    return xxhash.XXH32(mem.any_to_bytes(value))
-}// }}}
+
+hash_any_string :: proc(value: any) -> u32 {// {{{
+    return xxhash.XXH32(transmute([] byte) eat(reflect.as_string(value)))
+}// }}} 
 
 update_lhs :: proc(window: ^Window) {// {{{
     if !window.refresh && window.frame % (TARGET_FPS / 6) != 0 do return
@@ -741,8 +742,7 @@ update_lhs :: proc(window: ^Window) {// {{{
 
         iterator: int
         for k, v in reflect.iterate_map(value, &iterator) {
-            if find(ignored[:], hash_any_simple(k)) != -1 do continue 
-            // TODO just doesn't work, I don't know why...
+            if find(ignored[:], hash_any_string(k)) != -1 do continue 
 
             name := format_value_small(window, k)
             data := format_value_small(window, v)
@@ -756,6 +756,13 @@ update_lhs :: proc(window: ^Window) {// {{{
             }
             inject_at(&results, insertion_point, Entry { name, data, v })
 
+        }
+
+        // quick-enough sort
+        for i in 0..<len(results) {
+            for j in i+1..<len(results) {
+                if results[i].name > results[j].name do results[i], results[j] = results[j], results[i]
+            }
         }
 
         for result, i in results {

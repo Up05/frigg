@@ -52,7 +52,7 @@ main :: proc() {
     link(test.z, &test.n)
     unlink(test.z)
 
-    ignore("a", "test key #11")
+    ignore("a", "test key #103")
 
     test.n = 5
     test.o = make([^] int, 5)
@@ -66,6 +66,8 @@ main :: proc() {
 }
 
 /*
+    - unions in lhs
+
     - test smooth scrolling on xorg
     - test on windows 10...
 
