@@ -54,6 +54,27 @@ rgba :: proc(hex: u32) -> Color {
     return { r, g, b, a }
 }
 
+
+soft_up_to :: proc(str: string, max_len: int) -> string {
+    if len(str) <= max_len do return str
+
+    curly := strings.last_index(str[:max_len], "{")
+    if curly != -1 do return str[:curly]
+
+    space := strings.last_index(str[:max_len], " ")
+    if space == -1 do return str[:max_len]
+
+    return str[:space]
+}
+
+ptr_add :: proc(a: rawptr, b: uintptr) -> rawptr {
+    return rawptr(uintptr(a) + b)
+}
+
+to_any :: proc(ptr: rawptr, type: typeid) -> any {
+    return transmute(any) runtime.Raw_Any { data = ptr, id = type }
+}
+
 back :: proc(array: [dynamic] $T) -> T {
     return array[len(array) - 1]
 } 
@@ -122,6 +143,12 @@ make_color_palette :: proc(window: ^Window) {
 
 // ====================================================================
 
+get_linked_len :: proc(array: any) -> (length: int, ok: bool) {// {{{
+    raw_length := len_links[array.data]      or_return
+    length      = reflect.as_int(raw_length) or_return
+    return length, true
+}// }}}
+
 is_memory_safe :: proc(pointer: rawptr, size: int, allocator: Allocator) -> bool {// {{{
     page_size := uintptr(os.get_page_size())
 
@@ -146,18 +173,17 @@ is_memory_safe :: proc(pointer: rawptr, size: int, allocator: Allocator) -> bool
     return true
 }// }}}
 
-can_deref :: proc(window: ^Window, value: any) -> bool {
+can_deref :: proc(window: ^Window, value: any) -> bool {// {{{
     can_access  := ODIN_OS == .Linux
     can_access &&= value.data != nil
     can_access &&= (^rawptr)(value.data)^ != nil
     is_invalid := !is_memory_safe(((^rawptr)(value.data))^, reflect.size_of_typeid(value.id), window.tmp_alloc)
     can_access &&= !is_invalid
     return can_access
-}
-
+}// }}}
 
 @(require_results)
-iterate_array :: proc(val: any, it: ^int) -> (elem: any, index: int, ok: bool) {// {{{
+iterate_array :: proc(val: any, it: ^int, max_len := max(int)) -> (elem: any, index: int, ok: bool) {// {{{
 	if val == nil || it == nil {
 		return
 	}
@@ -165,7 +191,7 @@ iterate_array :: proc(val: any, it: ^int) -> (elem: any, index: int, ok: bool) {
 	ti := reflect.type_info_base(type_info_of(val.id))
 	#partial switch info in ti.variant {
     case reflect.Type_Info_Enumerated_Array:
-		if it^ < info.count {
+		if it^ < min(max_len, info.count) {
 			elem.data = rawptr(uintptr(val.data) + uintptr(it^ * info.elem_size))
 			elem.id = info.elem.id
 			ok = true
@@ -173,7 +199,7 @@ iterate_array :: proc(val: any, it: ^int) -> (elem: any, index: int, ok: bool) {
 			it^ += 1
 		}
     case reflect.Type_Info_Simd_Vector:
-		if it^ < info.count {
+		if it^ < min(max_len, info.count) {
 			elem.data = rawptr(uintptr(val.data) + uintptr(it^ * info.elem_size))
 			elem.id = info.elem.id
 			ok = true
@@ -181,24 +207,64 @@ iterate_array :: proc(val: any, it: ^int) -> (elem: any, index: int, ok: bool) {
 			it^ += 1
 		}
     case reflect.Type_Info_Matrix:
-		if it^ < info.column_count * info.row_count {
+		if it^ < min(max_len, info.column_count * info.row_count) {
 			elem.data = rawptr(uintptr(val.data) + uintptr(it^ * info.elem_size))
 			elem.id = info.elem.id
 			ok = true
 			index = it^
 			it^ += 1
 		}
-    case:
-        return reflect.iterate_array(val, it)
+    case reflect.Type_Info_Multi_Pointer:
+		if it^ < max_len && max_len != max(int) {
+			elem.data = rawptr(uintptr((^rawptr)(val.data)^) + uintptr(it^ * info.elem.size))
+			elem.id = info.elem.id
+			ok = true
+			index = it^
+			it^ += 1
+		}
+        
+	case reflect.Type_Info_Array:
+		if it^ < min(max_len, info.count) {
+			elem.data = rawptr(uintptr(val.data) + uintptr(it^ * info.elem_size))
+			elem.id = info.elem.id
+			ok = true
+			index = it^
+			it^ += 1
+		}
+	case reflect.Type_Info_Slice:
+		array := (^runtime.Raw_Slice)(val.data)
+		if it^ < min(max_len, array.len) {
+			elem.data = rawptr(uintptr(array.data) + uintptr(it^ * info.elem_size))
+			elem.id = info.elem.id
+			ok = true
+			index = it^
+			it^ += 1
+		}
+	case reflect.Type_Info_Dynamic_Array:
+		array := (^runtime.Raw_Dynamic_Array)(val.data)
+		if it^ < min(max_len, array.len) {
+			elem.data = rawptr(uintptr(array.data) + uintptr(it^ * info.elem_size))
+			elem.id = info.elem.id
+			ok = true
+			index = it^
+			it^ += 1
+		}
+
+	case reflect.Type_Info_Pointer:
+		if ptr := (^rawptr)(val.data)^; ptr != nil {
+			return iterate_array(any{ptr, info.elem.id}, it, max_len)
+		}
+
+    case: panic("type unsuported in iterate_array")
     }
 
     return
 }// }}}
 
-is_zero_array :: proc(array: any) -> bool {// {{{
+is_zero_array :: proc(array: any, max_len := max(int)) -> bool {// {{{
     all_zeros := true
     iterator: int
-    for item, i in iterate_array(array, &iterator) {
+    for item, i in iterate_array(array, &iterator, max_len) {
         if !mem.check_zero(mem.any_to_bytes(item)) {
             all_zeros = false
             break

@@ -7,10 +7,11 @@ import "core:math"
 import "core:math/rand"
 import "core:math/linalg"
 
+import "base:intrinsics"
 import "base:runtime"
 import "core:reflect"
-import "core:mem/virtual"
 import "core:mem"
+import "core:mem/virtual"
 
 import     "vendor:glfw"
 import  gl "vendor:OpenGL"
@@ -107,13 +108,65 @@ events : struct {
     num_down  : int,
 }
 
-windows: [dynamic] ^Window
-
 FONT_SIZE  :: 15
 TARGET_FPS :: 60
 
-glfw_initialized: bool
+windows   : [dynamic] ^Window
+len_links : map [rawptr] any 
 
+watch :: proc(value: any, pause_program: bool, expr := #caller_expression(value)) -> ^Window {// {{{
+    if len(windows) > 7 do return nil
+
+    window := new(Window)
+    append(&windows, window)
+
+    if len(window.lhs.parent_names) == 0 { 
+        append(&window.lhs.parent_names, expr) 
+    } 
+
+    window.lhs.viewed = value
+    update_lhs(window)
+
+    if pause_program {
+        for !render_frame_for_all() { }
+    }
+    
+    return window
+}// }}}
+
+render_frame_for_all :: proc(take_time_off_for_ms : Duration = 33) -> (no_more_windows: bool) {// {{{
+    if len(windows) == 0 do return true 
+
+    frame_start := now()
+    no_more_windows = true
+    for window in windows {
+        render_frame(window)
+
+        if glfw.WindowShouldClose(window.handle) {
+            exit_window(window)
+        } else do no_more_windows = false
+    }
+
+    events.single_frame = {}
+    glfw.WaitEventsTimeout(1)
+
+    sleep_for := take_time_off_for_ms * ms - diff(frame_start, now())
+    sleep_for  = min(max(sleep_for, 0), take_time_off_for_ms * ms)
+    sleep(sleep_for) // wayland :)
+
+    return
+}// }}}
+
+link :: proc(array: any, length: ^$NUMBER_TYPE) where intrinsics.type_is_integer(NUMBER_TYPE) {// {{{
+    len_links[array.data] = to_any( length, NUMBER_TYPE )
+}// }}}
+
+unlink :: proc(array: any) {// {{{
+    delete_key(&len_links, array.data)
+}// }}}
+
+
+glfw_initialized: bool
 initialize_window :: proc(window: ^Window) {// {{{
     defer window.inited = true
     window.size = { 640, 400 }
@@ -180,29 +233,6 @@ initialize_window :: proc(window: ^Window) {// {{{
     make_color_palette(window)
 }// }}}
 
-render_frame_for_all :: proc(take_time_off_for_ms : Duration = 33) -> (no_more_windows: bool) {// {{{
-    if len(windows) == 0 do return true 
-
-    frame_start := now()
-    no_more_windows = true
-    for window in windows {
-        render_frame(window)
-
-        if glfw.WindowShouldClose(window.handle) {
-            exit_window(window)
-        } else do no_more_windows = false
-    }
-
-    events.single_frame = {}
-    glfw.WaitEventsTimeout(1)
-
-    sleep_for := take_time_off_for_ms * ms - diff(frame_start, now())
-    sleep_for  = min(max(sleep_for, 0), take_time_off_for_ms * ms)
-    sleep(sleep_for) // wayland :)
-
-    return
-}// }}}
-
 render_frame :: proc(window: ^Window) {// {{{
     if !window.inited { initialize_window(window) }
 
@@ -238,7 +268,7 @@ render_frame :: proc(window: ^Window) {// {{{
     draw_rhs_pane(window)
 
     frame_took := fmt.aprint("frame took:", diff(frame_start, now()), allocator = window.tmp_alloc)
-    draw_text(window, frame_took, { window.size.x - text_width(window, frame_took) - 8, FONT_SIZE - 2 }, window.fg )
+    draw_text(window, frame_took, { window.size.x - text_width(window, frame_took) - 8, 0 }, window.fg )
 
     the_hash := hash(window.lhs.viewed, { window = window })
     defer window.previous_hash = the_hash
@@ -270,7 +300,7 @@ exit_window :: proc(window: ^Window) {// {{{
 
 draw_lhs_pane :: proc(window: ^Window) {// {{{
     if window.lhs.hidden do return
-    base_pos := window.lhs.pos - window.lhs.scroll.pos + { 0, FONT_SIZE }
+    base_pos := window.lhs.pos - window.lhs.scroll.pos
 
     offsets: [4] f32
     for name in window.lhs.names { offsets[1] = max(offsets[1], text_width(window, name)) }
@@ -279,16 +309,21 @@ draw_lhs_pane :: proc(window: ^Window) {// {{{
 
     window.lhs.scroll.max = { offsets.y + offsets.z + offsets.w, f32(len(window.lhs.names)) * FONT_SIZE }
 
-    scissor(window, window.lhs.pos, window.lhs.size - { 0, FONT_SIZE*2 })
+    scissor(window, window.lhs.pos, window.lhs.size - { 4, FONT_SIZE*2 })
     defer nvg.ResetScissor(window.ctx)
+    defer handle_scrolling(window, &window.lhs.scroll, window.lhs.pos, window.lhs.size)
 
-    {   i := window.lhs.cursor // max(i-1,0)+1 = i
-        y := window.lhs.pos.y - window.lhs.scroll.pos.y + 2 + FONT_SIZE*f32(i)
+    { // cursor  
+        i := window.lhs.cursor // max(i-1,0)+1 = i
+        y := window.lhs.pos.y - window.lhs.scroll.pos.y + FONT_SIZE*f32(i)
         w := window.lhs.size.x
         draw_rect(window, { 8, y }, { w - 16, FONT_SIZE }, window.palette.hl)
-
-        dist := math.round((y-2 - window.lhs.pos.y) / FONT_SIZE)
-        window.lhs.scroll.pos.y += (dist - 15) * FONT_SIZE
+        
+        if window.refresh {
+            dist := math.round((y - window.lhs.pos.y) / FONT_SIZE)
+            window.lhs.scroll.pos.y += (dist - 15) * FONT_SIZE
+            window.lhs.scroll.vel.y  = 0
+        }
     }
     
     offset := offsets[0]
@@ -311,7 +346,7 @@ draw_lhs_pane :: proc(window: ^Window) {// {{{
         draw_text(window, value, pos, window.fg)
     }
 
-    handle_scrolling(window, &window.lhs.scroll, window.lhs.pos, window.lhs.size)
+    
 
 }// }}}
 
@@ -327,71 +362,35 @@ draw_rhs_pane :: proc(window: ^Window) {// {{{
 
     max_size := window.rhs.size * { 1, 0.4 }
 
-    scissor(window, base_pos + offset - { 0, FONT_SIZE }, max_size)
+    scissor(window, window.rhs.pos + offset, max_size)
     size := draw_text_wrapped_rhs(window, window.rhs.value, base_pos + offset)
-    handle_scrolling(window, &window.rhs.value_scroll, window.rhs.pos, max_size)
     nvg.ResetScissor(window.ctx)
+    handle_scrolling(window, &window.rhs.value_scroll, window.rhs.pos + offset, max_size)
 
     offset += { 0, window.rhs.size.y * 0.4 }
     
     scissor(window, window.rhs.pos + offset, window.rhs.size * { 1, 0.45 })
-    size = draw_text_wrapped_binary(window, window.rhs.binary, window.rhs.pos + offset + { 0, FONT_SIZE }, max_size)
+    size = draw_text_wrapped_binary(window, window.rhs.binary, window.rhs.pos + offset, max_size)
     window.rhs.binary_scroll.max = { 0, size.y }
-    handle_scrolling(window, &window.rhs.binary_scroll, window.rhs.pos + offset, max_size)
     nvg.ResetScissor(window.ctx)
+    handle_scrolling(window, &window.rhs.binary_scroll, window.rhs.pos + offset, max_size)
 }// }}}
 
-watch :: proc(value: any, pause_program: bool, expr := #caller_expression(value)) -> ^Window {// {{{
-    if len(windows) > 7 do return nil
-
-    window := new(Window)
-    append(&windows, window)
-
-    if len(window.lhs.parent_names) == 0 { 
-        append(&window.lhs.parent_names, expr) 
-    } 
-
-    window.lhs.viewed = value
-    update_lhs(window)
-
-    if pause_program {
-        for !render_frame_for_all() { }
-    }
-    
-    return window
-}// }}}
-
-soft_up_to :: proc(str: string, max_len: int) -> string {// {{{{{{
-    if len(str) <= max_len do return str
-
-    curly := strings.last_index(str[:max_len], "{")
-    if curly != -1 do return str[:curly]
-
-    space := strings.last_index(str[:max_len], " ")
-    if space == -1 do return str[:max_len]
-
-    return str[:space]
-}// }}}}}}
-ptr_add :: proc(a: rawptr, b: uintptr) -> rawptr {// {{{
-    return rawptr(uintptr(a) + b)
-}// }}}
-to_any :: proc(ptr: rawptr, type: typeid) -> any {// {{{
-    return transmute(any) runtime.Raw_Any { data = ptr, id = type }
-}// }}}
 draw_text_wrapped_rhs :: proc(window: ^Window, text: string, pos: Vector) -> (size: Vector) {// {{{
     max_size := window.rhs.size * { 1, 0.33333 }
     size = draw_text_wrapped(window, text, pos - window.rhs.value_scroll.pos, max_size, window.palette.fg)
     window.rhs.value_scroll.max = { 0, size.y }
     return max_size
 }// }}}
+
 draw_text_wrapped_binary :: proc(window: ^Window, text: string, pos: Vector, max_size: Vector) -> (size: Vector) {// {{{
     text := strings.trim_right(text, " \n")
     original_pos := pos
     pos := pos - window.rhs.binary_scroll.pos
 
-    length := int(window.rhs.size.x / text_width(window, "_") / 5)
-    length -= min(int(length) % 8, 64)
-    if length == 0 do return
+    length_f32 := math.floor(window.rhs.size.x / text_width(window, "_") / 3.4)
+    length_f32  = math.pow(2, math.floor(math.log2(length_f32)))
+    length := int(length_f32)
 
     // you won't believe how I got it!   for i in 0..<64 { fmt.printf("%02X ", i) }; fmt.println()
     @static xlabel := "**** 00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F 10 11 12 13 14 15 16 17 18 19 1A 1B 1C 1D 1E 1F 20 21 22 23 24 25 26 27 28 29 2A 2B 2C 2D 2E 2F 30 31 32 33 34 35 36 37 38 39 3A 3B 3C 3D 3E 3F"
@@ -410,11 +409,12 @@ draw_text_wrapped_binary :: proc(window: ^Window, text: string, pos: Vector, max
 
         if len(text) > 3*length {
             // NOTE: actually fully fucking insane, I spent 3 hours on the: pos.x + window.rhs.pos.x
-            // what the fuck?
+            // like what am I even doing here anymore?..
             if should_draw do draw_text(window, text[:3*length], { pos.x + window.rhs.pos.x, pos.y }, window.fg)
             pos.y += FONT_SIZE
             text = text[3*length:]
             if len(text) == 0 do return pos - original_pos
+
         } else {
             if should_draw do draw_text(window, text, { pos.x + window.rhs.pos.x, pos.y }, window.fg)
             pos.y += FONT_SIZE
@@ -497,9 +497,8 @@ handle_scrolling :: proc(window: ^Window, scroll: ^Scroll, pos, size: Vector) {/
         scroll.pos.y = (window.mouse.y - track_pos.y - thumb_height/2) / track_size.y / (1/scroll.max.y)
     
     }
-    if intersects(window.mouse, pos, size) {
+    if intersects(window.mouse, pos, size) && events.active_window == window.handle {
         scroll.vel += -events.scroll * speed * { 1, f32(i32(draw_vertical)) }
-    
     }
 
     scroll.pos  += scroll.vel
@@ -586,6 +585,16 @@ key_callback :: proc "c" (window: glfw.WindowHandle, key: i32, scancode: i32, ac
 
 }// }}}
 scroll_callback :: proc "c" (window: glfw.WindowHandle, x, y: f64) {// {{{
+    is_friggs_window: bool
+    for a_window in windows {
+        if a_window.handle == window {
+            is_friggs_window = true
+            break
+        }
+    }
+    if !is_friggs_window do return
+    events.active_window = window
+
     events.scroll = { f32(x), f32(y) }       
 }// }}}
 draw_rect :: proc(window: ^Window, pos: Vector, size: Vector, color: [4] f32) {// {{{
@@ -618,6 +627,7 @@ draw_text :: proc(window: ^Window, text: string, pos: Vector, color: [4] f32) {/
     if !should_draw do return 
 
     nvg.FillColor(window.ctx, color)
+    nvg.TextAlignVertical(window.ctx, .TOP)
     nvg.Text(window.ctx, pos.x, pos.y, text)
     nvg.FillColor(window.ctx, { 1, 1, 1, 1 })
     return

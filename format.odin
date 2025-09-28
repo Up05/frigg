@@ -51,7 +51,7 @@ format_value_small :: proc(window: ^Window, value: any, level := 0) -> string {/
 
     case reflect.Type_Info_Pointer:          text = format_pointer(window, value) 
     case reflect.Type_Info_Soa_Pointer:      text = format_pointer(window, value) 
-    case reflect.Type_Info_Multi_Pointer:    text = format_pointer(window, value) 
+    case reflect.Type_Info_Multi_Pointer:    text = format_multi_pointer(window, value) 
 
     case reflect.Type_Info_Array:            text = format_array(window, value) 
     case reflect.Type_Info_Enumerated_Array: text = format_array(window, value)
@@ -79,16 +79,23 @@ format_value_small :: proc(window: ^Window, value: any, level := 0) -> string {/
     }// }}}
 
     format_array :: proc(window: ^Window, array: any) -> string {// {{{
-        builder := strings.builder_make(allocator = window.alloc)
+        builder := strings.builder_make(allocator = window.tmp_alloc)
 
         length := get_array_length(array)
+
+        if new_length, has_length := get_linked_len(array); has_length {
+            strings.write_string(&builder, "[:")
+            strings.write_int(&builder, new_length)
+            strings.write_string(&builder, "]")
+            length = new_length
+        }
 
         if length == 0 {
             strings.write_string(&builder, "[]")
             return strings.to_string(builder)
         }
 
-        if is_zero_array(array) {
+        if is_zero_array(array, length) {
             fmt.sbprintf(&builder, "[0*%d]", length)
             return strings.to_string(builder)
         }
@@ -96,7 +103,41 @@ format_value_small :: proc(window: ^Window, value: any, level := 0) -> string {/
         strings.write_string(&builder, "[ ")
 
         iterator: int
-        for item, i in iterate_array(array, &iterator) {
+        for item, i in iterate_array(array, &iterator, length) {
+            formatted := format_value_small(window, item)
+            if len(formatted) + len(builder.buf) > window.small_value_limit {
+                strings.write_string(&builder, "..")
+                strings.write_int(&builder, length)
+                break
+            }
+
+            strings.write_string(&builder, formatted)
+            if i != length - 1 {
+                strings.write_string(&builder, ", ")
+            }
+        }
+
+        strings.write_string(&builder, " ]")
+        return strings.to_string(builder)
+    }// }}}
+
+    format_multi_pointer :: proc(window: ^Window, array: any) -> string {// {{{
+        builder := strings.builder_make(allocator = window.alloc)
+
+        strings.write_string(&builder, "[:")
+        length, has_length := get_linked_len(array)
+        if !has_length {
+            strings.write_string(&builder, "?]")
+            strings.write_string(&builder, format_pointer(window, array))
+            return strings.to_string(builder)
+        }
+        strings.write_int(&builder, length)
+        strings.write_string(&builder, "]")
+
+        strings.write_string(&builder, "[ ")
+
+        iterator: int
+        for item, i in iterate_array(array, &iterator, length) {
             formatted := format_value_small(window, item)
             if len(formatted) + len(builder.buf) > window.small_value_limit {
                 strings.write_string(&builder, "..")
@@ -207,7 +248,7 @@ format_value_big :: proc(window: ^Window, value: any, level := 0) -> string {// 
 
     case reflect.Type_Info_Pointer:          text = format_pointer(window, value, level) 
     case reflect.Type_Info_Soa_Pointer:      text = format_pointer(window, value, level) 
-    case reflect.Type_Info_Multi_Pointer:    text = format_pointer(window, value, level) 
+    case reflect.Type_Info_Multi_Pointer:    text = format_multi_pointer(window, value) 
 
     case reflect.Type_Info_Array:            text = format_array(window, value) 
     case reflect.Type_Info_Enumerated_Array: text = format_array(window, value)
@@ -252,17 +293,25 @@ format_value_big :: proc(window: ^Window, value: any, level := 0) -> string {// 
         return strings.to_string(builder)
     }// }}}
 
-    format_array :: proc(window: ^Window, array: any) -> string {// {{{
+    format_multi_pointer :: proc(window: ^Window, array: any) -> string {// {{{
         builder := strings.builder_make(allocator = window.alloc)
 
-        length := get_array_length(array)
+        strings.write_string(&builder, "[:")
+        length, has_length := get_linked_len(array)
+        if !has_length {
+            strings.write_string(&builder, "?]")
+            strings.write_string(&builder, format_pointer(window, array))
+            return strings.to_string(builder)
+        }
+        strings.write_int(&builder, length)
+        strings.write_string(&builder, "]")
 
         if length == 0 {
             strings.write_string(&builder, "[]")
             return strings.to_string(builder)
         }
 
-        if is_zero_array(array) {
+        if is_zero_array(array, length) {
             fmt.sbprintf(&builder, "[0*%d]", length)
             return strings.to_string(builder)
         }
@@ -270,9 +319,52 @@ format_value_big :: proc(window: ^Window, value: any, level := 0) -> string {// 
         strings.write_string(&builder, "[ ")
 
         iterator: int
-        for item, i in iterate_array(array, &iterator) {
+        for item, i in iterate_array(array, &iterator, length) {
             formatted := format_value_small(window, item)
-            if len(formatted) + len(builder.buf) > window.small_value_limit {
+            if len(formatted) + len(builder.buf) > 1024 {
+                strings.write_string(&builder, "..")
+                strings.write_int(&builder, length)
+                break
+            }
+
+            strings.write_string(&builder, formatted)
+            if i != length - 1 {
+                strings.write_string(&builder, ", ")
+            }
+        }
+
+        strings.write_string(&builder, " ]")
+        return strings.to_string(builder)
+    }// }}}
+
+    format_array :: proc(window: ^Window, array: any) -> string {// {{{
+        builder := strings.builder_make(allocator = window.alloc)
+
+        length := get_array_length(array)
+
+        if new_length, has_length := get_linked_len(array); has_length {
+            strings.write_string(&builder, "[:")
+            strings.write_int(&builder, new_length)
+            strings.write_string(&builder, "]")
+            length = new_length
+        }
+
+        if length == 0 {
+            strings.write_string(&builder, "[]")
+            return strings.to_string(builder)
+        }
+
+        if is_zero_array(array, length) {
+            fmt.sbprintf(&builder, "[0*%d]", length)
+            return strings.to_string(builder)
+        }
+
+        strings.write_string(&builder, "[ ")
+
+        iterator: int
+        for item, i in iterate_array(array, &iterator, length) {
+            formatted := format_value_small(window, item)
+            if len(formatted) + len(builder.buf) > 1024 {
                 strings.write_string(&builder, "..")
                 strings.write_int(&builder, length)
                 break
@@ -587,8 +679,6 @@ hash :: proc(value: any, state: HashState, level := 0) -> u32 {// {{{
     else do return 0
 }// }}}
 
-
-
 update_lhs :: proc(window: ^Window) {// {{{
     if !window.refresh && window.frame % (TARGET_FPS / 6) != 0 do return
     window.lhs.hidden = false
@@ -618,7 +708,12 @@ update_lhs :: proc(window: ^Window) {// {{{
 
     case reflect.Type_Info_Map:
         lhs_comment(window, "(sorted by frigg)")
-        results := make([dynamic] [2]string, window.tmp_alloc)
+        Entry :: struct {
+            name : string,
+            data : string,
+            value: any,
+        }
+        results := make([dynamic] Entry, window.tmp_alloc)
 
         iterator: int
         for k, v in reflect.iterate_map(value, &iterator) {
@@ -627,24 +722,24 @@ update_lhs :: proc(window: ^Window) {// {{{
 
             insertion_point := 0
             for result, i in results {
-                if result[0] > name {
+                if result.name > name {
                     insertion_point = i
                     break
                 }
             }
-            inject_at(&results, insertion_point, [2]string { name, data })
+            inject_at(&results, insertion_point, Entry { name, data, v })
 
-            if iterator + 1 == window.lhs.cursor { 
-                window.rhs.viewed = {
-                    name  = strings.clone(name, window.alloc),
-                    type  = soft_up_to(fmt.aprint(k.id, "<=>", v.id, allocator = window.alloc), 24),
-                    value = v
-                }
-            }
         }
 
-        for result in results {
-            lhs_add(window, result[0], "", result[1], window.lhs_alloc)
+        for result, i in results {
+            lhs_add(window, result.name, "", result.data, window.lhs_alloc)
+            if i + 1 == window.lhs.cursor { 
+                window.rhs.viewed = {
+                    name  = strings.clone(result.name, window.alloc),
+                    type  = soft_up_to(fmt.aprint(real_type.key.id, "<->", real_type.value.id, allocator = window.lhs_alloc), 24),
+                    value = result.value
+                }
+            }
         }
 
     case reflect.Type_Info_Slice, reflect.Type_Info_Array, reflect.Type_Info_Dynamic_Array,
