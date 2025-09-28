@@ -5,7 +5,6 @@ import "core:strings"
 
 import "core:math"
 import "core:math/rand"
-import "core:math/linalg"
 
 import "base:intrinsics"
 import "base:runtime"
@@ -59,11 +58,13 @@ Window :: struct {
         names        : [dynamic] string,
         types        : [dynamic] string,
         small_values : [dynamic] string,
+        real_values  : [dynamic] any,
 
         cursor : int,
         viewed : any,
         parents      : [dynamic] any,
         parent_names : [dynamic] string,
+        parent_cursor: [dynamic] int,
     },
 
     rhs : struct {
@@ -113,6 +114,7 @@ TARGET_FPS :: 60
 
 windows   : [dynamic] ^Window
 len_links : map [rawptr] any 
+ignored   : [dynamic] u32
 
 watch :: proc(value: any, pause_program: bool, expr := #caller_expression(value)) -> ^Window {// {{{
     if len(windows) > 7 do return nil
@@ -120,9 +122,11 @@ watch :: proc(value: any, pause_program: bool, expr := #caller_expression(value)
     window := new(Window)
     append(&windows, window)
 
-    if len(window.lhs.parent_names) == 0 { 
-        append(&window.lhs.parent_names, expr) 
-    } 
+    window.lhs.parents       = make(type_of(window.lhs.parents      ), window.alloc)
+    window.lhs.parent_names  = make(type_of(window.lhs.parent_names ), window.alloc)
+    window.lhs.parent_cursor = make(type_of(window.lhs.parent_cursor), window.alloc)
+
+    append(&window.lhs.parent_names, expr) 
 
     window.lhs.viewed = value
     update_lhs(window)
@@ -165,6 +169,11 @@ unlink :: proc(array: any) {// {{{
     delete_key(&len_links, array.data)
 }// }}}
 
+ignore :: proc(bad_names: ..string) { // {{{
+    for name in bad_names {
+        append(&ignored, hash_string(name))
+    }
+}// }}}
 
 glfw_initialized: bool
 initialize_window :: proc(window: ^Window) {// {{{
@@ -441,34 +450,33 @@ handle_keyboard :: proc(window: ^Window) {// {{{
             window.refresh = true
         }
 
+        selected_item_name := window.lhs.names[window.lhs.cursor]
+
         if key(glfw.KEY_ENTER) || key(glfw.KEY_RIGHT) {
             reset_scroll(window)
 
             if ctrl() {
                 if window.lhs.viewed == nil do return
 
-                field := reflect.struct_field_at(window.lhs.viewed.id, window.lhs.cursor - 1)
-                if field.type == nil do return
-                watch(reflect.struct_field_value(window.lhs.viewed, field), false, field.name)
+                watch(window.lhs.real_values[window.lhs.cursor], false, selected_item_name)
                 window.refresh = true
 
             } else {
                 if window.lhs.viewed == nil do return
                 append(&window.lhs.parents, window.lhs.viewed)
                 append(&window.lhs.parent_names, window.rhs.viewed.name)
+                append(&window.lhs.parent_cursor, window.lhs.cursor)
 
-                field := reflect.struct_field_at(window.lhs.viewed.id, window.lhs.cursor - 1)
-                if field.type == nil do return
-                window.lhs.viewed = reflect.struct_field_value(window.lhs.viewed, field)
+                window.lhs.viewed = window.lhs.real_values[window.lhs.cursor]
                 window.lhs.cursor = 1
                 window.refresh = true
             }
         }
 
         if (key(glfw.KEY_BACKSPACE) || key(glfw.KEY_LEFT)) && len(window.lhs.parents) > 0 {
+            window.lhs.cursor = pop(&window.lhs.parent_cursor)
             window.lhs.viewed = pop(&window.lhs.parents)
             pop(&window.lhs.parent_names)
-            window.lhs.cursor = 1
             window.refresh = true
             reset_scroll(window)
         }

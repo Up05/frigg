@@ -50,6 +50,9 @@ main :: proc() {
 
     link(test.o, &test.n)
     link(test.z, &test.n)
+    unlink(test.z)
+
+    ignore("a", "test key #11")
 
     test.n = 5
     test.o = make([^] int, 5)
@@ -59,26 +62,14 @@ main :: proc() {
 
     for !render_frame_for_all() { test.z[1] += 1 }
 
-    // start_rendering()
-
 
 }
 
 /*
-    - hot reloading:
-        - selection stack
-        - scroll states
-        - watch(.., hot_reload = true)
-
-    - implement link() for update_lhs
-    - implement unlink()
-    - test sparse enum arrays?
-
     - test smooth scrolling on xorg
     - test on windows 10...
 
     - handle SIMD stuff EVENTUALLY!
-
 */
 
 
