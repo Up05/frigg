@@ -109,8 +109,30 @@ events : struct {
     num_down  : int,
 }
 
-FONT_SIZE  :: 15
-TARGET_FPS :: 60
+TARGET_FPS :: 30 // I couldn't be bothered...
+
+options : struct {
+    initial_window_size   : Vector,
+    font_size             : f32,
+
+    scrollbar_width       : f32,
+    scroll_speed          : f32,
+    scroll_speed_maintain : f32,
+
+    major_glfw_version    : i32,
+    use_extra_glfw_crap   : bool
+
+} = {
+    initial_window_size = { 640, 480 },
+    font_size = 15,
+    
+    scrollbar_width = 8,
+    scroll_speed = 20,
+    scroll_speed_maintain = 0.825,
+
+    major_glfw_version = 4,
+}
+
 
 windows   : [dynamic] ^Window
 len_links : map [rawptr] any 
@@ -138,7 +160,7 @@ watch :: proc(value: any, pause_program: bool, expr := #caller_expression(value)
     return window
 }// }}}
 
-render_frame_for_all :: proc(take_time_off_for_ms : Duration = 33) -> (no_more_windows: bool) {// {{{
+render_frame_for_all :: proc(take_time_off_for_ms : Duration = 1000 / TARGET_FPS) -> (no_more_windows: bool) {// {{{
     if len(windows) == 0 do return true 
 
     frame_start := now()
@@ -178,7 +200,7 @@ ignore :: proc(bad_names: ..string) { // {{{
 glfw_initialized: bool
 initialize_window :: proc(window: ^Window) {// {{{
     defer window.inited = true
-    window.size = { 640, 400 }
+    window.size = options.initial_window_size
 
     if !glfw_initialized {
         assert( bool(glfw.Init()) )
@@ -186,22 +208,24 @@ initialize_window :: proc(window: ^Window) {// {{{
     }
     
     { // GLFW window {{{
-        glfw.WindowHint(glfw.CONTEXT_VERSION_MAJOR, 4)
-        glfw.WindowHint(glfw.CONTEXT_VERSION_MINOR, 5)
-        glfw.WindowHint(glfw.OPENGL_FORWARD_COMPAT, 1)
-        glfw.WindowHint(glfw.OPENGL_PROFILE, glfw.OPENGL_CORE_PROFILE)
-        glfw.WindowHint(glfw.OPENGL_DEBUG_CONTEXT, 1)
-        glfw.WindowHint(glfw.SAMPLES, 4)
+        glfw.WindowHint(glfw.CONTEXT_VERSION_MAJOR, options.major_glfw_version)
+        if options.use_extra_glfw_crap {
+            glfw.WindowHint(glfw.OPENGL_FORWARD_COMPAT, 1)
+            glfw.WindowHint(glfw.OPENGL_PROFILE, glfw.OPENGL_CORE_PROFILE)
+            glfw.WindowHint(glfw.OPENGL_DEBUG_CONTEXT, 1)
+        }
 
         window.handle = glfw.CreateWindow(i32(window.size.x), i32(window.size.y), "frigg", nil, nil)
-        assert(window.handle != nil)
+        fmt.assertf(window.handle != nil, "Failed to create Frigg's window. with error: \n%v %v\n\nIt's, probably, the drivers...", glfw.GetError())
 
         glfw.MakeContextCurrent(window.handle)
         gl.load_up_to(4, 5, glfw.gl_set_proc_address) 
-        gl.Enable(gl.MULTISAMPLE)
         
-        gl.Enable(gl.BLEND)
-        gl.BlendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA)
+        if options.use_extra_glfw_crap {
+            gl.Enable(gl.MULTISAMPLE)
+            gl.Enable(gl.BLEND)
+            gl.BlendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA)
+        }
 
         glfw.SetKeyCallback(window.handle, key_callback)
         glfw.SetScrollCallback(window.handle, scroll_callback)
@@ -224,13 +248,11 @@ initialize_window :: proc(window: ^Window) {// {{{
             int(100 * px_ratio),
             { .REPEAT_X, .REPEAT_Y },
         )
-
-
     }// }}}
 
     nvg.CreateFont(window.ctx, "mono", "font.ttf")
     // TODO CreateFontMem
-    nvg.FontSize(window.ctx, FONT_SIZE)
+    nvg.FontSize(window.ctx, options.font_size)
 
     window.exists    = true
     window.alloc     = make_arena()
@@ -317,28 +339,28 @@ draw_lhs_pane :: proc(window: ^Window) {// {{{
     for type in window.lhs.types { offsets[2] = max(offsets[2], text_width(window, type)) }
     for sval in window.lhs.small_values { offsets[3] = max(offsets[3], text_width(window, sval)) }
 
-    window.lhs.scroll.max = { offsets.y + offsets.z + offsets.w, f32(len(window.lhs.names)) * FONT_SIZE }
+    window.lhs.scroll.max = { offsets.y + offsets.z + offsets.w, f32(len(window.lhs.names)) * options.font_size }
 
-    scissor(window, window.lhs.pos, window.lhs.size - { 4, FONT_SIZE*2 })
+    scissor(window, window.lhs.pos, window.lhs.size - { 4, options.font_size*2 })
     defer nvg.ResetScissor(window.ctx)
     defer handle_scrolling(window, &window.lhs.scroll, window.lhs.pos, window.lhs.size)
 
     { // cursor  
         i := window.lhs.cursor // max(i-1,0)+1 = i
-        y := window.lhs.pos.y - window.lhs.scroll.pos.y + FONT_SIZE*f32(i)
+        y := window.lhs.pos.y - window.lhs.scroll.pos.y + options.font_size*f32(i)
         w := window.lhs.size.x
-        draw_rect(window, { 8, y }, { w - 16, FONT_SIZE }, window.palette.hl)
+        draw_rect(window, { 8, y }, { w - 16, options.font_size }, window.palette.hl)
         
         if window.refresh {
-            dist := math.round((y - window.lhs.pos.y) / FONT_SIZE)
-            window.lhs.scroll.pos.y += (dist - 15) * FONT_SIZE
+            dist := math.round((y - window.lhs.pos.y) / options.font_size)
+            window.lhs.scroll.pos.y += (dist - 15) * options.font_size
             window.lhs.scroll.vel.y  = 0
         }
     }
     
     offset := offsets[0]
     for name, i in window.lhs.names {
-        pos := window.lhs.pos + { offset, f32(i) * FONT_SIZE } + base_pos
+        pos := window.lhs.pos + { offset, f32(i) * options.font_size } + base_pos
         if i != 0 do pos.x += 16
         draw_text(window, name, pos, window.palette.fg)
     }
@@ -346,13 +368,13 @@ draw_lhs_pane :: proc(window: ^Window) {// {{{
 
     offset += offsets[1] + 16 
     for type, i in window.lhs.types {
-        pos := window.lhs.pos + { offset, f32(i) * FONT_SIZE } + base_pos
+        pos := window.lhs.pos + { offset, f32(i) * options.font_size } + base_pos
         draw_text(window, type, pos, window.fg)
     }
 
     offset += offsets[2] + 16
     for value, i in window.lhs.small_values {
-        pos := window.lhs.pos + { offset, f32(i) * FONT_SIZE } + base_pos
+        pos := window.lhs.pos + { offset, f32(i) * options.font_size } + base_pos
         draw_text(window, value, pos, window.fg)
     }
 
@@ -366,9 +388,9 @@ draw_rhs_pane :: proc(window: ^Window) {// {{{
     offset: Vector
     
     draw_text(window, window.rhs.name, base_pos + offset, window.fg)
-    offset.y += FONT_SIZE
+    offset.y += options.font_size
     draw_text(window, window.rhs.type, base_pos + offset, window.fg)
-    offset.y += FONT_SIZE * 2
+    offset.y += options.font_size * 2
 
     max_size := window.rhs.size * { 1, 0.4 }
 
@@ -406,12 +428,12 @@ draw_text_wrapped_binary :: proc(window: ^Window, text: string, pos: Vector, max
     @static xlabel := "**** 00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F 10 11 12 13 14 15 16 17 18 19 1A 1B 1C 1D 1E 1F 20 21 22 23 24 25 26 27 28 29 2A 2B 2C 2D 2E 2F 30 31 32 33 34 35 36 37 38 39 3A 3B 3C 3D 3E 3F"
 
     draw_text(window, xlabel[:min(3*length, len(text))+5], { pos.x, pos.y }, window.bin)
-    pos.y += FONT_SIZE
+    pos.y += options.font_size
 
     advance_x := text_width(window, "0000 ") - pos.x
     for i in 0..<2048 {
-        should_draw := pos.y > original_pos.y - FONT_SIZE*1
-        should_draw &= pos.y < original_pos.y + max_size.y + FONT_SIZE*2
+        should_draw := pos.y > original_pos.y - options.font_size*1
+        should_draw &= pos.y < original_pos.y + max_size.y + options.font_size*2
 
         if should_draw do draw_text(window, fmt.aprintf("%04X ", i*length), { pos.x, pos.y }, window.bin)
         pos.x += advance_x
@@ -421,13 +443,13 @@ draw_text_wrapped_binary :: proc(window: ^Window, text: string, pos: Vector, max
             // NOTE: actually fully fucking insane, I spent 3 hours on the: pos.x + window.rhs.pos.x
             // like what am I even doing here anymore?..
             if should_draw do draw_text(window, text[:3*length], { pos.x + window.rhs.pos.x, pos.y }, window.fg)
-            pos.y += FONT_SIZE
+            pos.y += options.font_size
             text = text[3*length:]
             if len(text) == 0 do return pos - original_pos
 
         } else {
             if should_draw do draw_text(window, text, { pos.x + window.rhs.pos.x, pos.y }, window.fg)
-            pos.y += FONT_SIZE
+            pos.y += options.font_size
             return pos - original_pos
         }
     }
@@ -456,6 +478,7 @@ handle_keyboard :: proc(window: ^Window) {// {{{
             window.lhs.viewed = pop(&window.lhs.parents)
             pop(&window.lhs.parent_names)
             window.refresh = true
+            return
         }
 
         selected_item_name := window.lhs.names[window.lhs.cursor] 
@@ -493,9 +516,6 @@ handle_keyboard :: proc(window: ^Window) {// {{{
 
 dragged_scrollbar: int
 handle_scrolling :: proc(window: ^Window, scroll: ^Scroll, pos, size: Vector) {// {{{
-    width: f32 =  8
-    speed: f32 = 20
-    speed_maintain: f32 = 0.825
 
     draw_vertical   := scroll.max.y != 0 && scroll.max.y > size.y  
 
@@ -506,21 +526,21 @@ handle_scrolling :: proc(window: ^Window, scroll: ^Scroll, pos, size: Vector) {/
 
     if scroll.id == dragged_scrollbar {
         
-        track_pos  : Vector = pos + { width, 0 }
-        track_size : Vector = { width, size.y }
+        track_pos  : Vector = pos + { options.scrollbar_width, 0 }
+        track_size : Vector = { options.scrollbar_width, size.y }
 
         thumb_height := track_size.y*track_size.y * (1/scroll.max.y)
         scroll.pos.y = (window.mouse.y - track_pos.y - thumb_height/2) / track_size.y / (1/scroll.max.y)
-    
     }
+
     if intersects(window.mouse, pos, size) && events.active_window == window.handle {
-        scroll.vel += -events.scroll * speed * { 1, f32(i32(draw_vertical)) }
+        scroll.vel += -events.scroll * options.scroll_speed * { 1, f32(i32(draw_vertical)) }
     }
 
     scroll.pos  += scroll.vel
     scroll.pos.x = max(scroll.pos.x, 0)
     scroll.pos.y = max(scroll.pos.y, 0)
-    scroll.vel  *= speed_maintain // 0..<1
+    scroll.vel  *= options.scroll_speed_maintain // 0..<1
 
     end := scroll.max * 1.05
     scroll.pos = { max(scroll.pos.x, 0),     max(scroll.pos.y, 0) }
@@ -531,8 +551,8 @@ handle_scrolling :: proc(window: ^Window, scroll: ^Scroll, pos, size: Vector) {/
     }
 
     if draw_vertical { 
-        track_pos  : Vector = pos + { size.x - width, 0 }
-        track_size : Vector = { width, size.y }
+        track_pos  : Vector = pos + { size.x - options.scrollbar_width, 0 }
+        track_size : Vector = { options.scrollbar_width, size.y }
 
         left_clicked := glfw.GetMouseButton(window.handle, glfw.MOUSE_BUTTON_LEFT) == glfw.PRESS 
         if left_clicked && intersects(window.mouse, track_pos, track_size) {
@@ -622,7 +642,7 @@ draw_rect :: proc(window: ^Window, pos: Vector, size: Vector, color: [4] f32) {/
 }// }}}
 draw_text_wrapped :: proc(window: ^Window, text: string, pos: Vector, size: Vector, color: [4] f32) -> Vector {// {{{
     _text := text
-    assert(size.y / FONT_SIZE < 128)
+    assert(size.y / options.font_size < 128)
     lines: [128] nvg.Text_Row
     line_slice := lines[:]
     line_count, _, _ := nvg.TextBreakLines(window.ctx, &_text, size.x, &line_slice)
@@ -631,14 +651,14 @@ draw_text_wrapped :: proc(window: ^Window, text: string, pos: Vector, size: Vect
     for line in lines[:line_count] {
         draw_text(window, text[line.start:line.end], pos + { 0, y }, color)
         w  = max(w, text_width(window, text[line.start:line.end]))
-        y += FONT_SIZE + 1
+        y += options.font_size + 1
     }
 
     return { w, y }
 }// }}}
 draw_text :: proc(window: ^Window, text: string, pos: Vector, color: [4] f32) {// {{{
-    should_draw := pos.y > -FONT_SIZE
-    should_draw &= pos.y < window.size.y + FONT_SIZE
+    should_draw := pos.y > -options.font_size
+    should_draw &= pos.y < window.size.y + options.font_size
     if !should_draw do return 
 
     nvg.FillColor(window.ctx, color)

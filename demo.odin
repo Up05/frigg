@@ -26,6 +26,7 @@ test : struct {
     },
     n: int,
     o: [^] int,
+    p: any,
 }
 
 main :: proc() {
@@ -58,6 +59,8 @@ main :: proc() {
     test.o = make([^] int, 5)
     for i in 0..<5 do test.o[i] = i * 3
 
+    test.p = test.c
+
     window := watch(test, false)
 
     for !render_frame_for_all() { test.z[1] += 1 }
@@ -66,11 +69,6 @@ main :: proc() {
 }
 
 /*
-    - unions in lhs
-
-    - test smooth scrolling on xorg
-    - test on windows 10...
-
     - handle SIMD stuff EVENTUALLY!
 */
 

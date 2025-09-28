@@ -32,7 +32,7 @@ format_value_small :: proc(window: ^Window, value: any, level := 0) -> string {/
 
     the_type := reflect.type_info_base(type_info_of(value.id))
     switch real_type in the_type.variant {
-    case reflect.Type_Info_Any:              text = format_value_small(window, value, level + 1)
+    case reflect.Type_Info_Any:              text = format_value_small(window, collapse_any(window, value), level + 1)
 
     case reflect.Type_Info_Named:            text = format_basic(window, value)
     case reflect.Type_Info_Integer:          text = format_basic(window, value) 
@@ -106,7 +106,7 @@ format_value_small :: proc(window: ^Window, value: any, level := 0) -> string {/
         for item, i in iterate_array(array, &iterator, length) {
             formatted := format_value_small(window, item)
             if len(formatted) + len(builder.buf) > window.small_value_limit {
-                strings.write_string(&builder, "..")
+                strings.write_string(&builder, "..<")
                 strings.write_int(&builder, length)
                 break
             }
@@ -140,7 +140,7 @@ format_value_small :: proc(window: ^Window, value: any, level := 0) -> string {/
         for item, i in iterate_array(array, &iterator, length) {
             formatted := format_value_small(window, item)
             if len(formatted) + len(builder.buf) > window.small_value_limit {
-                strings.write_string(&builder, "..")
+                strings.write_string(&builder, "..<")
                 strings.write_int(&builder, length)
                 break
             }
@@ -231,7 +231,7 @@ format_value_big :: proc(window: ^Window, value: any, level := 0) -> string {// 
 
     the_type := reflect.type_info_base(type_info_of(value.id))
     switch real_type in the_type.variant {
-    case reflect.Type_Info_Any:              text = format_value_small(window, value, level + 1)
+    case reflect.Type_Info_Any:              text = format_value_big(window, collapse_any(window, value), level + 1)
 
     case reflect.Type_Info_Named:            text = format_basic(window, value)
     case reflect.Type_Info_Float:            text = format_basic(window, value) 
@@ -321,7 +321,7 @@ format_value_big :: proc(window: ^Window, value: any, level := 0) -> string {// 
         for item, i in iterate_array(array, &iterator, length) {
             formatted := format_value_small(window, item)
             if len(formatted) + len(builder.buf) > 1024 {
-                strings.write_string(&builder, "..")
+                strings.write_string(&builder, "..<")
                 strings.write_int(&builder, length)
                 break
             }
@@ -364,7 +364,7 @@ format_value_big :: proc(window: ^Window, value: any, level := 0) -> string {// 
         for item, i in iterate_array(array, &iterator, length) {
             formatted := format_value_small(window, item)
             if len(formatted) + len(builder.buf) > 1024 {
-                strings.write_string(&builder, "..")
+                strings.write_string(&builder, "..<")
                 strings.write_int(&builder, length)
                 break
             }
@@ -857,23 +857,35 @@ update_lhs :: proc(window: ^Window) {// {{{
 
         window.lhs.hidden = true
 
-    case reflect.Type_Info_Named:       lhs_add(window, "", "", "", nil, window.lhs_alloc); window.lhs.hidden = true
-    case reflect.Type_Info_Integer:     lhs_add(window, "", "", "", nil, window.lhs_alloc); window.lhs.hidden = true 
-    case reflect.Type_Info_Float:       lhs_add(window, "", "", "", nil, window.lhs_alloc); window.lhs.hidden = true 
-    case reflect.Type_Info_Complex:     lhs_add(window, "", "", "", nil, window.lhs_alloc); window.lhs.hidden = true 
-    case reflect.Type_Info_Quaternion:  lhs_add(window, "", "", "", nil, window.lhs_alloc); window.lhs.hidden = true 
-    case reflect.Type_Info_Boolean:     lhs_add(window, "", "", "", nil, window.lhs_alloc); window.lhs.hidden = true 
-    case reflect.Type_Info_Type_Id:     lhs_add(window, "", "", "", nil, window.lhs_alloc); window.lhs.hidden = true
-    case reflect.Type_Info_Enum:        lhs_add(window, "", "", "", nil, window.lhs_alloc); window.lhs.hidden = true 
-    case reflect.Type_Info_Bit_Set:     lhs_add(window, "", "", "", nil, window.lhs_alloc); window.lhs.hidden = true 
-    case reflect.Type_Info_Bit_Field:   lhs_add(window, "", "", "", nil, window.lhs_alloc); window.lhs.hidden = true 
-    case reflect.Type_Info_Procedure:   lhs_add(window, "", "", "", nil, window.lhs_alloc); window.lhs.hidden = true
-    case reflect.Type_Info_Rune:        lhs_add(window, "", "", "", nil, window.lhs_alloc); window.lhs.hidden = true
-    case reflect.Type_Info_String:      lhs_add(window, "", "", "", nil, window.lhs_alloc); window.lhs.hidden = true
-    case reflect.Type_Info_Soa_Pointer: lhs_add(window, "", "", "", nil, window.lhs_alloc); window.lhs.hidden = true      
-    case: 
+    case reflect.Type_Info_Any:
+
+        for i in 0..<15 {
+            value = collapse_any(window, value)
+            if value == nil {
+                window.lhs.viewed = value
+                break   
+            
+            }
+
+            if !reflect.is_any(type_info_of(value.id)) { 
+                if value != nil do window.lhs.viewed = value
+                update_lhs(window)
+                return
+            }
+
+            window.lhs.viewed = value
+        }
+
         window.lhs.hidden = true
-        fmt.println("bad value for visualization for now:", value)
+
+
+    case reflect.Type_Info_Union: 
+        window.lhs.viewed = reflect.get_union_variant(value)
+        update_lhs(window)
+
+    case: 
+        lhs_add(window, "", "", "", nil, window.lhs_alloc) 
+        window.lhs.hidden = true
     }
 }// }}}
 

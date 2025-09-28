@@ -76,6 +76,12 @@ to_any :: proc(ptr: rawptr, type: typeid) -> any {// {{{
     return transmute(any) runtime.Raw_Any { data = ptr, id = type }
 }// }}}
 
+collapse_any :: proc(window: ^Window, anyany: any) -> any {// {{{
+    if !can_deref(window, anyany) do return nil  
+    data := (^any)(anyany.data)^
+    return to_any(rawptr(data.data), data.id)
+}// }}}
+
 back :: proc(array: [dynamic] $T) -> T {// {{{
     return array[len(array) - 1]
 } // }}}
@@ -157,6 +163,7 @@ get_linked_len :: proc(array: any) -> (length: int, ok: bool) {// {{{
 }// }}}
 
 is_memory_safe :: proc(pointer: rawptr, size: int, allocator: Allocator) -> bool {// {{{
+    if pointer == nil do return false
     page_size := uintptr(os.get_page_size())
 
     // align to page by setting all (non relevant) bits to 0. "&~" is "and-not"
