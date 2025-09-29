@@ -1,4 +1,4 @@
-package main
+package frigg
 
 import "core:fmt"
 
@@ -35,7 +35,7 @@ main :: proc() {
     test.b = 4
     test.d = "str"
 
-    // for i in 0..<640 { test.e[fmt.aprintf("test key #%d", i)] = 3.14159 * f32(i) }
+    for i in 0..<640 { test.e[fmt.aprintf("test key #%d", i)] = 3.14159 * f32(i) }
     test.f = 42
     test.g = "str2"
     test.c = {

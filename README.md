@@ -7,7 +7,10 @@ Use the arrow keys to browse the associated memory values.
 
 Frigg works best on X11 Linux, because there are bugs with GLFW and wayland(or at least sway).  
 Frigg also works on Windows, although it's less polished and (as far as I know) can crash by viewing bogus pointers.  
-I am too poor to be able to test my software on MacOS. FreeBSD and the like: idk ¯\\\_(ツ)\_/¯.
+I am too poor to be able to test my software on MacOS. FreeBSD and the like: idk ¯\\\_(ツ)\_/¯.  
+Frigg does not currently work on systems with OpenGL drivers.  
+
+SOA pointers aren't really suported, they're not hard to implement, I just... kind of... couldn't be bothered...
 
 # Usage
 
@@ -54,8 +57,8 @@ main :: proc() {
 Arrow keys can be used as alternative keybindings.
 
 ```
-Tab         ↑  go to line below
-S Tab       ↓  go to line above
+S Tab       ↑  go to line above
+Tab         ↓  go to line below
 C Enter   C →  go to value & make window
 Enter       →  go to value
 Backspace   ←  go back          
@@ -63,9 +66,8 @@ Backspace   ←  go back
 
 # Small value format
 
-Printing of small values is designed to be obvious and short.
-
-Weirder cases:
+Printing of small values is designed to be obvious and short, but
+there are some weirder cases:
 ```
 ..          skipping elements
 ..<LEN      skipping and here is the entire length
