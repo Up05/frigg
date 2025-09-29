@@ -1288,7 +1288,7 @@ format_value_binary :: proc(window: ^Window, value: any, level := 0) -> string {
 
     the_type := reflect.type_info_base(type_info_of(value.id))
     switch real_type in the_type.variant {
-    case reflect.Type_Info_Any:              text = format_value_small(window, value, level + 1)
+    case reflect.Type_Info_Any:              text = format_value_binary(window, collapse_any(window, value), level + 1)
 
     case reflect.Type_Info_Named:            text = format_basic(window, value)
     case reflect.Type_Info_Float:            text = format_basic(window, value) 
@@ -1312,7 +1312,7 @@ format_value_binary :: proc(window: ^Window, value: any, level := 0) -> string {
     case reflect.Type_Info_Parameters:       text = format_basic(window, value)
 
     case reflect.Type_Info_Pointer:          text = format_pointer(window, value, level) 
-    case reflect.Type_Info_Multi_Pointer:    text = format_pointer(window, value, level) 
+    case reflect.Type_Info_Multi_Pointer:    text = format_multi_pointer(window, value, level) 
 
     case reflect.Type_Info_Dynamic_Array:    text = format_array(window, value)
     case reflect.Type_Info_Slice:            text = format_array(window, value) 
@@ -1373,6 +1373,24 @@ format_value_binary :: proc(window: ^Window, value: any, level := 0) -> string {
 
         return format_many_bytes(window, { a, b })
     } // }}} 
+
+    format_multi_pointer :: proc(window: ^Window, value: any, level: int) -> string { // {{{
+        a := mem.any_to_bytes(value)
+
+        length, ok := get_linked_len(value)
+        if !ok do return format_pointer(window, value, level)
+
+        start := ((^rawptr)(value.data))^
+        size  := length * get_array_stride(value)
+        b := (transmute([^]byte) start)[:size]
+
+        can_access  := ODIN_OS == .Linux
+        can_access &&= value.data != nil
+        can_access &&= is_memory_safe(((^rawptr)(value.data))^, reflect.size_of_typeid(value.id), window.tmp_alloc)
+
+        return format_many_bytes(window, { a, b if can_access else {} })
+    } // }}} 
+
 
     format_array :: proc(window: ^Window, value: any) -> string { // {{{
         a := mem.any_to_bytes(value)

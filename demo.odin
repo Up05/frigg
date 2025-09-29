@@ -64,12 +64,4 @@ main :: proc() {
     window := watch(test, false)
 
     for !render_frame_for_all() { test.z[1] += 1 }
-
-
 }
-
-/*
-    - handle SIMD stuff EVENTUALLY!
-*/
-
-
