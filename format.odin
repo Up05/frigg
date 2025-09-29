@@ -7,23 +7,32 @@ import "base:runtime"
 import "core:reflect"
 import "core:hash/xxhash"
 
-lhs_clear :: proc(window: ^Window) {// {{{
+update_hash :: xxhash.XXH32_update 
+HashState :: struct {
+    window : ^Window,
+    hash   : ^xxhash.XXH32_state,
+}
+
+@private lhs_clear :: proc(window: ^Window) {// {{{
     clear(&window.lhs.names)      
     clear(&window.lhs.types)      
     clear(&window.lhs.small_values)
     clear(&window.lhs.real_values)
 }// }}}
-lhs_add :: proc(window: ^Window, name, type, value: string, real_value: any, allocator: Allocator) {// {{{
+
+@private lhs_add :: proc(window: ^Window, name, type, value: string, real_value: any, allocator: Allocator) {// {{{
     append(&window.lhs.names,        strings.clone(name,  allocator))
     append(&window.lhs.types,        strings.clone(type,  allocator))
     append(&window.lhs.small_values, strings.clone(value, allocator))
     append(&window.lhs.real_values,  real_value)
 }// }}}
-lhs_comment :: proc(window: ^Window, comment: string) {// {{{
+
+@private lhs_comment :: proc(window: ^Window, comment: string) {// {{{
     if len(window.lhs.small_values) == 0 do return
     window.lhs.small_values[0] = strings.clone(comment, window.lhs_alloc)
 }// }}}
 
+// the window is used for its allocators
 format_value_small :: proc(window: ^Window, value: any, level := 0) -> string {// {{{
     if value.data == nil do return "<nil>"
     if level > 15 do return "<self>"
@@ -122,7 +131,7 @@ format_value_small :: proc(window: ^Window, value: any, level := 0) -> string {/
     }// }}}
 
     format_multi_pointer :: proc(window: ^Window, array: any) -> string {// {{{
-        builder := strings.builder_make(allocator = window.alloc)
+        builder := strings.builder_make(allocator = window.tmp_alloc)
 
         strings.write_string(&builder, "[:")
         length, has_length := get_linked_len(array)
@@ -156,7 +165,7 @@ format_value_small :: proc(window: ^Window, value: any, level := 0) -> string {/
     }// }}}
 
     format_struct :: proc(window: ^Window, value: any) -> string {// {{{
-        builder := strings.builder_make(allocator = window.alloc)
+        builder := strings.builder_make(allocator = window.tmp_alloc)
         strings.write_string(&builder, "{ ")
 
         fields := reflect.struct_fields_zipped(value.id) 
@@ -224,6 +233,7 @@ format_value_small :: proc(window: ^Window, value: any, level := 0) -> string {/
     return text
 }// }}}
 
+// the window is used for its allocators
 format_value_big :: proc(window: ^Window, value: any, level := 0) -> string {// {{{
     if value.data == nil do return "<nil>"
     if level > 15 do return "<self>"
@@ -296,7 +306,7 @@ format_value_big :: proc(window: ^Window, value: any, level := 0) -> string {// 
     }// }}}
 
     format_multi_pointer :: proc(window: ^Window, array: any) -> string {// {{{
-        builder := strings.builder_make(allocator = window.alloc)
+        builder := strings.builder_make(allocator = window.tmp_alloc)
 
         length, has_length := get_linked_len(array)
         if !has_length { return format_value_small(window, array) }
@@ -337,7 +347,7 @@ format_value_big :: proc(window: ^Window, value: any, level := 0) -> string {// 
     }// }}}
 
     format_array :: proc(window: ^Window, array: any) -> string {// {{{
-        builder := strings.builder_make(allocator = window.alloc)
+        builder := strings.builder_make(allocator = window.tmp_alloc)
 
         length := get_array_length(array)
 
@@ -381,7 +391,7 @@ format_value_big :: proc(window: ^Window, value: any, level := 0) -> string {// 
 
     format_matrix :: proc(window: ^Window, array: any) -> string {// {{{
         SPACE : [256] rune = '\u2002'
-        builder := strings.builder_make(allocator = window.alloc)
+        builder := strings.builder_make(allocator = window.tmp_alloc)
         type_info := reflect.type_info_base(type_info_of(array.id)).variant.(reflect.Type_Info_Matrix)
     
         iterator : int
@@ -416,7 +426,7 @@ format_value_big :: proc(window: ^Window, value: any, level := 0) -> string {// 
     }// }}}
 
     format_struct :: proc(window: ^Window, value: any) -> string {// {{{
-        builder := strings.builder_make(allocator = window.alloc)
+        builder := strings.builder_make(allocator = window.tmp_alloc)
     
         fields := reflect.struct_fields_zipped(value.id) 
         members := make([] string, len(fields), window.tmp_alloc)
@@ -479,6 +489,7 @@ format_value_big :: proc(window: ^Window, value: any, level := 0) -> string {// 
     return text
 }// }}}
 
+// the window is used for its allocators
 format_value_binary :: proc(window: ^Window, value: any, level := 0) -> string {// {{{
     if value.data == nil do return "??"
     if level > 15 do return "<self>"
@@ -594,12 +605,7 @@ format_value_binary :: proc(window: ^Window, value: any, level := 0) -> string {
     return text
 }// }}}
 
-HashState :: struct {
-    window : ^Window,
-    hash   : ^xxhash.XXH32_state,
-}
-
-update_hash ::  xxhash.XXH32_update 
+// the window is used for its allocators
 hash :: proc(value: any, state: HashState, level := 0) -> u32 {// {{{
     original_state := state
     state := state
@@ -689,15 +695,15 @@ hash :: proc(value: any, state: HashState, level := 0) -> u32 {// {{{
     else do return 0
 }// }}}
 
-hash_string :: proc(str: string) -> u32 {// {{{
+@private hash_string :: proc(str: string) -> u32 {// {{{
     return xxhash.XXH32(transmute([] byte) str)
 }// }}}
 
-hash_any_string :: proc(value: any) -> u32 {// {{{
+@private hash_any_string :: proc(value: any) -> u32 {// {{{
     return xxhash.XXH32(transmute([] byte) eat(reflect.as_string(value)))
 }// }}} 
 
-update_lhs :: proc(window: ^Window) {// {{{
+@private update_lhs :: proc(window: ^Window) {// {{{
     if !window.refresh && window.frame % (TARGET_FPS / 6) != 0 do return
     window.lhs.hidden = false
     lhs_clear(window)
@@ -724,8 +730,8 @@ update_lhs :: proc(window: ^Window) {// {{{
 
             if i + 1 - ignore_count == window.lhs.cursor { 
                 window.rhs.viewed = {
-                    name = strings.clone(field.name, window.alloc),
-                    type = soft_up_to(fmt.aprint(field.type, allocator = window.alloc), 24),
+                    name = strings.clone(field.name, window.lhs_alloc),
+                    type = soft_up_to(fmt.aprint(field.type, allocator = window.lhs_alloc), 24),
                     value = to_any(ptr_add(value.data, field.offset), field.type.id) 
                 }
             }
@@ -769,7 +775,7 @@ update_lhs :: proc(window: ^Window) {// {{{
             lhs_add(window, result.name, "", result.data, result.value, window.lhs_alloc)
             if i + 1 == window.lhs.cursor { 
                 window.rhs.viewed = {
-                    name  = strings.clone(result.name, window.alloc),
+                    name  = strings.clone(result.name, window.lhs_alloc),
                     type  = soft_up_to(fmt.aprint(real_type.key.id, "<->", real_type.value.id, allocator = window.lhs_alloc), 24),
                     value = result.value
                 }
@@ -889,7 +895,7 @@ update_lhs :: proc(window: ^Window) {// {{{
     }
 }// }}}
 
-update_rhs :: proc(window: ^Window) {// {{{
+@private update_rhs :: proc(window: ^Window) {// {{{
     if !window.refresh && window.frame % (TARGET_FPS / 6) != 0 do return
     free_all(window.rhs_alloc)
 
@@ -903,6 +909,4 @@ update_rhs :: proc(window: ^Window) {// {{{
     window.rhs.binary = strings.clone(format_value_binary(window, value), window.rhs_alloc)   
 
 }// }}}
-
-
 

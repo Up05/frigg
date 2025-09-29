@@ -24,31 +24,31 @@ sleep :: time.sleep
 ms    :: time.Millisecond
 cstr  :: strings.clone_to_cstring
 
-eat :: proc(v: $T, e: any) -> T { return v }
+@private eat :: proc(v: $T, e: any) -> T { return v }
 
 // box <-> box collision detection (used for rendering text only when box is visible on screen)
-AABB :: proc(a, a_size, b, b_size: Vector) -> bool {// {{{
+@private AABB :: proc(a, a_size, b, b_size: Vector) -> bool {// {{{
     return  (a.x <= b.x + b_size.x && a.x + a_size.x >= b.x) &&
             (a.y <= b.y + b_size.y && a.y + a_size.y >= b.y)
 }// }}}
 
-intersects :: proc(a, b, bsize: Vector) -> bool {// {{{
+@private intersects :: proc(a, b, bsize: Vector) -> bool {// {{{
     return  a.x >= b.x && a.x <= b.x + bsize.x && 
             a.y >= b.y && a.y <= b.y + bsize.y     
 }// }}}
 
-max_vector :: proc(a, b: Vector) -> Vector {// {{{
+@private max_vector :: proc(a, b: Vector) -> Vector {// {{{
     return { max(a.x, b.x), max(a.y, b.y) }
 }// }}}
 
-make_arena :: proc() -> Allocator {// {{{
+@private make_arena :: proc() -> Allocator {// {{{
     arena := new(virtual.Arena)
     _ = virtual.arena_init_growing(arena)
     return virtual.arena_allocator(arena) 
 }// }}}
 
 // convert hex to [4] u8 (actually sdl.Color)
-rgba :: proc(hex: u32) -> Color {// {{{
+@private rgba :: proc(hex: u32) -> Color {// {{{
     r : u8 = u8( (hex & 0xFF000000) >> 24 )
     g : u8 = u8( (hex & 0x00FF0000) >> 16 )
     b : u8 = u8( (hex & 0x0000FF00) >>  8 )
@@ -56,7 +56,7 @@ rgba :: proc(hex: u32) -> Color {// {{{
     return { r, g, b, a }
 }// }}}
 
-soft_up_to :: proc(str: string, max_len: int) -> string {// {{{
+@private soft_up_to :: proc(str: string, max_len: int) -> string {// {{{
     if len(str) <= max_len do return str
 
     curly := strings.last_index(str[:max_len], "{")
@@ -68,30 +68,30 @@ soft_up_to :: proc(str: string, max_len: int) -> string {// {{{
     return str[:space]
 }// }}}
 
-ptr_add :: proc(a: rawptr, b: uintptr) -> rawptr {// {{{
+@private ptr_add :: proc(a: rawptr, b: uintptr) -> rawptr {// {{{
     return rawptr(uintptr(a) + b)
 }// }}}
 
-to_any :: proc(ptr: rawptr, type: typeid) -> any {// {{{
+@private to_any :: proc(ptr: rawptr, type: typeid) -> any {// {{{
     return transmute(any) runtime.Raw_Any { data = ptr, id = type }
 }// }}}
 
-collapse_any :: proc(window: ^Window, anyany: any) -> any {// {{{
+@private collapse_any :: proc(window: ^Window, anyany: any) -> any {// {{{
     if !can_deref(window, anyany) do return nil  
     data := (^any)(anyany.data)^
     return to_any(rawptr(data.data), data.id)
 }// }}}
 
-back :: proc(array: [dynamic] $T) -> T {// {{{
+@private back :: proc(array: [dynamic] $T) -> T {// {{{
     return array[len(array) - 1]
 } // }}}
 
-find :: proc "c" (array: [] $T, elem: T) -> int {// {{{
+@private find :: proc "c" (array: [] $T, elem: T) -> int {// {{{
     for e, i in array do if e == elem do return i
     return -1
 }// }}}
 
-hsl_to_rgb :: proc(h, s, l: f32) -> (rgb: [4] f32) {// {{{
+@private hsl_to_rgb :: proc(h, s, l: f32) -> (rgb: [4] f32) {// {{{
     hue_to_rgb :: proc(p, q, t: f32) -> f32 {
         p := p; q := q; t := t
         if t < 0    do t += 1
@@ -118,7 +118,7 @@ hsl_to_rgb :: proc(h, s, l: f32) -> (rgb: [4] f32) {// {{{
 color_stack: [dynamic] f32
 color_upper: bool = false
 color_level: int  = 2
-make_color_palette :: proc(window: ^Window) {// {{{
+@private make_color_palette :: proc(window: ^Window) {// {{{
     h: f32
 
     get_next_color :: proc() -> f32 {
@@ -150,7 +150,7 @@ make_color_palette :: proc(window: ^Window) {// {{{
 
 // ====================================================================
 
-get_linked_len :: proc(array: any) -> (length: int, ok: bool) {// {{{
+@private get_linked_len :: proc(array: any) -> (length: int, ok: bool) {// {{{
     raw_length := len_links[array.data]      or_return
     length      = reflect.as_int(raw_length) or_return
     return length, true
@@ -162,7 +162,7 @@ get_linked_len :: proc(array: any) -> (length: int, ok: bool) {// {{{
     // }
 }// }}}
 
-is_memory_safe :: proc(pointer: rawptr, size: int, allocator: Allocator) -> bool {// {{{
+@private is_memory_safe :: proc(pointer: rawptr, size: int, allocator: Allocator) -> bool {// {{{
     if pointer == nil do return false
     page_size := uintptr(os.get_page_size())
 
@@ -187,7 +187,7 @@ is_memory_safe :: proc(pointer: rawptr, size: int, allocator: Allocator) -> bool
     return true
 }// }}}
 
-can_deref :: proc(window: ^Window, value: any) -> bool {// {{{
+@private can_deref :: proc(window: ^Window, value: any) -> bool {// {{{
     can_access  := ODIN_OS == .Linux
     can_access &&= value.data != nil
     can_access &&= (^rawptr)(value.data)^ != nil
@@ -196,7 +196,7 @@ can_deref :: proc(window: ^Window, value: any) -> bool {// {{{
     return can_access
 }// }}}
 
-can_deref_small :: proc(value: any) -> bool {// {{{
+@private can_deref_small :: proc(value: any) -> bool {// {{{
     can_access  := ODIN_OS == .Linux
     can_access &&= value.data != nil
     can_access &&= (^rawptr)(value.data)^ != nil
@@ -206,7 +206,7 @@ can_deref_small :: proc(value: any) -> bool {// {{{
 }// }}}
 
 @(require_results)
-iterate_array :: proc(val: any, it: ^int, max_len := max(int)) -> (elem: any, index: int, ok: bool) {// {{{
+@private iterate_array :: proc(val: any, it: ^int, max_len := max(int)) -> (elem: any, index: int, ok: bool) {// {{{
 	if val == nil || it == nil {
 		return
 	}
@@ -284,7 +284,7 @@ iterate_array :: proc(val: any, it: ^int, max_len := max(int)) -> (elem: any, in
     return
 }// }}}
 
-is_zero_array :: proc(array: any, max_len := max(int)) -> bool {// {{{
+@private is_zero_array :: proc(array: any, max_len := max(int)) -> bool {// {{{
     all_zeros := true
     iterator: int
     for item, i in iterate_array(array, &iterator, max_len) {
@@ -296,7 +296,7 @@ is_zero_array :: proc(array: any, max_len := max(int)) -> bool {// {{{
     return all_zeros
 }// }}}
 
-get_array_length :: proc(array: any) -> int {// {{{
+@private get_array_length :: proc(array: any) -> int {// {{{
     slice_len :: proc(array: any) -> int {
         return (transmute(^runtime.Raw_Slice) array.data).len
     }
@@ -327,7 +327,7 @@ get_array_length :: proc(array: any) -> int {// {{{
     return 0
 }// }}}
 
-get_array_stride :: proc(array: any) -> int {// {{{
+@private get_array_stride :: proc(array: any) -> int {// {{{
     the_type := reflect.type_info_base(type_info_of(array.id))
     #partial switch type_info in the_type.variant {
     case reflect.Type_Info_Map:              panic("I don't know...")
@@ -343,11 +343,11 @@ get_array_stride :: proc(array: any) -> int {// {{{
     return 0
 }// }}}
 
-are_we_wayland :: proc() -> bool {
+@private are_we_wayland :: proc() -> bool {// {{{
     result := os.get_env("WAYLAND_DISPLAY")
     defer delete_string(result)
     return result != ""
-}
+}// }}}
 
 // TRASH
 

@@ -1,3 +1,6 @@
+/*
+   frigg package ... TODO
+*/
 package main
 
 import "core:fmt"
@@ -20,16 +23,14 @@ import ngl "vendor:nanovg/gl"
 Color   :: [4]  u8
 Vector  :: [2] f32
 
-WHITE : Color : { 255, 255, 255, 255 }
-
-Origin :: enum { TOP, CENTER, BOTTOM }
-
+// mousewheel scrolling info (per window, per section)
 Scroll :: struct {
     min, max, pos : Vector,
     vel : Vector,
     id  : int,
 }
 
+// fancy rl.Rect{}
 Pane :: struct {
     pos     : Vector,
     size    : Vector,
@@ -37,48 +38,49 @@ Pane :: struct {
     hidden  : bool,
 }
 
+// the big boy
 Window :: struct {
     handle    : glfw.WindowHandle,
     ctx       : ^nvg.Context,
     size      : Vector,
     mouse     : Vector,
 
-    inited    : bool,
-    exists    : bool,
-    frame     : int,
-    refresh   : bool,
+    inited    : bool, // has window itself been initialized
+    exists    : bool, // initialize..(): true; exit..(): false
+    frame     : int,  // frames since start...
+    refresh   : bool, // should refresh lhs & rhs data now
 
-    alloc     : Allocator,
-    tmp_alloc : Allocator,
-    lhs_alloc : Allocator,
-    rhs_alloc : Allocator,
+    alloc     : Allocator, // lifetime of the window
+    tmp_alloc : Allocator, // lifetime of a single frigg's frame
+    lhs_alloc : Allocator, // lifetime of the current lhs
+    rhs_alloc : Allocator, // lifetime of the current rhs
 
-    lhs : struct { 
+    lhs : struct { // left hand side (may be top half)
         using _      : Pane,
-        names        : [dynamic] string,
-        types        : [dynamic] string,
-        small_values : [dynamic] string,
-        real_values  : [dynamic] any,
+        names        : [dynamic] string, // first  column
+        types        : [dynamic] string, // second column (sometimes empty)
+        small_values : [dynamic] string, // third  column
+        real_values  : [dynamic] any,    // memoization
 
-        cursor : int,
-        viewed : any,
+        cursor       : int, // which row is active
+        viewed       : any, // one of the real_values (although unrelated in code)
         parents      : [dynamic] any,
-        parent_names : [dynamic] string,
-        parent_cursor: [dynamic] int,
+        parent_names : [dynamic] string, // 1st parent's name is the #caller_expr of watch()
+        parent_cursor: [dynamic] int,    // QoL when backtracing
     },
 
-    rhs : struct {
+    rhs : struct { // right hand side (may be bottom half)
         using _: Pane,
         viewed : struct {
-            name   : string,
-            type   : string,
-            value  : any,
+            name   : string, // 1st row of rhs
+            type   : string, // 2nd row of rhs
+            value  : any,    // other rows
         },
 
-        name   : string,
-        type   : string,
-        value  : string,
-        binary : string,
+        name   : string, // I don't know, I think
+        type   : string, // These are just generated
+        value  : string, // instead
+        binary : string, 
 
         value_scroll  : Scroll,
         binary_scroll : Scroll,
@@ -91,39 +93,43 @@ Window :: struct {
         bin : [4] f32, // binary hex rgba
     },
 
-    small_value_limit : int,
-    previous_hash     : u32,
+    small_value_limit : int, // when should they get cut off
+    previous_hash     : u32, // used for figuring out when to refresh formatted data
 }
 
 events : struct {
     using single_frame : struct {
-        pressed  : [64] i32,
-        released : [64] i32, 
-        num_pressed   : int,
-        num_released  : int,
-        scroll        : Vector,
-        active_window : glfw.WindowHandle,
+        pressed  : [64] i32, // keys pressed  specifically this frame (or repeated)
+        released : [64] i32, // keys released specifically this frame
+        num_pressed   : int, // len(pressed)
+        num_released  : int, // len(released)
+        scroll        : Vector, // mouse wheel / touchpad scroll velocity
+        active_window : glfw.WindowHandle, // to others: please check this in event handling
     },
 
-    down : [64] i32,
-    num_down  : int,
+    down : [64] i32, // keys held down this frame
+    num_down  : int, // len(down)
 }
 
 TARGET_FPS :: 30 // I couldn't be bothered...
 
 options : struct {
-    initial_window_size   : Vector,
-    font_size             : f32,
+    initial_window_size   : Vector,     // ..
+    vamos                 : bool,       // Do not wait for events / target fps
+    target_fps            : f32,        // Setting this wastes fewer resources
+    font_size             : f32,        // ..
 
-    scrollbar_width       : f32,
-    scroll_speed          : f32,
-    scroll_speed_maintain : f32,
+    scrollbar_width       : f32,        // > = easier to drag, but distracting
+    scroll_speed          : f32,        // Whatever feels good #1
+    scroll_speed_maintain : f32,        // Whatever feels good #2,  0..1
 
-    major_glfw_version    : i32,
-    use_extra_glfw_crap   : bool
+    major_glfw_version    : i32,        // Try changing this if missing drivers
+    use_extra_glfw_crap   : bool        // I don't think, this does anything...
 
 } = {
-    initial_window_size = { 640, 480 },
+    initial_window_size = { 600, 800 },
+    vamos = true,
+    target_fps = 30,
     font_size = 15,
     
     scrollbar_width = 8,
@@ -138,6 +144,21 @@ windows   : [dynamic] ^Window
 len_links : map [rawptr] any 
 ignored   : [dynamic] u32
 
+/*
+The function opens a new window and displays the given value inside of it.
+
+If `pause_program` is `true`, it will render everything fully automatically until all windows are 
+closed by the user, then the original program will continue.
+
+If `pause_program` is `false`, the user needs to call `render_frame_for_all()` in some loop.
+I imagine, this will often be the main game loop.
+
+Functions such as `link(array, &seperate_length)` and `ignore("field name or list index")` may 
+also be used to control what values are shown (or to display multipointers).
+
+Refer to README.md # Keyboard Shortcuts for those.
+------------------------------------
+*/
 watch :: proc(value: any, pause_program: bool, expr := #caller_expression(value)) -> ^Window {// {{{
     if len(windows) > 7 do return nil
 
@@ -160,52 +181,105 @@ watch :: proc(value: any, pause_program: bool, expr := #caller_expression(value)
     return window
 }// }}}
 
-render_frame_for_all :: proc(take_time_off_for_ms : Duration = 1000 / TARGET_FPS) -> (no_more_windows: bool) {// {{{
+/*
+This function renders 1 frame of all frigg's windows. 
+Use it when all active `watch(...)` calls have `pause_program = false`.
+
+The simplest usage for this function is to just call it as a for condition
+```c
+for !render_frame_for_all() { test.z[1] += 1 }
+```
+
+Also, frigg 
+1. ON WAYLAND: uses options.target_fps to slow down itself & the user program.
+2. ELSEWHERE:  uses glfw.WaitEventsTimeout(1) to only rerender frames when needed.
+if you wish to, instead, f*cking rip it, please set `options.vamos` to `true`
+
+------------------------------------
+*/
+render_frame_for_all :: proc() -> (no_more_windows: bool) {// {{{
     if len(windows) == 0 do return true 
 
-    frame_start := now()
-    no_more_windows = true
+    @static frame_start: Tick
     for window in windows {
         render_frame(window)
 
         if glfw.WindowShouldClose(window.handle) {
             exit_window(window)
-        } else do no_more_windows = false
+        } 
     }
 
+    no_more_windows = len(windows) == 0
+
     events.single_frame = {}
-    glfw.WaitEventsTimeout(1)
+    if options.vamos {
+        glfw.PollEvents()
 
-    sleep_for := take_time_off_for_ms * ms - diff(frame_start, now())
-    sleep_for  = min(max(sleep_for, 0), take_time_off_for_ms * ms)
-    sleep(sleep_for) // wayland :)
+    } else {
+        glfw.WaitEventsTimeout(1)
 
+        // wayland :)
+        rest_duration := Duration(1000 / options.target_fps) * ms
+        sleep_for := rest_duration - diff(frame_start, now())
+        sleep_for  = min(max(sleep_for, 0), rest_duration)
+        sleep(sleep_for) 
+        frame_start = now()
+    }
     return
 }// }}}
 
+/*
+Used to set a custom length for a list and to render the values of a `[^] multi_pointer`. 
+linked length arrays are formatted with `[:LINKED_LENGTH]` prefix, as a reminder about hidden info.
+
+You may also use `unlink(same_array)`
+
+*Don't measure dangling pointers... 
+You don't know how their length compares to the real deal...*
+------------------------------------
+*/
 link :: proc(array: any, length: ^$NUMBER_TYPE) where intrinsics.type_is_integer(NUMBER_TYPE) {// {{{
     len_links[array.data] = to_any( length, NUMBER_TYPE )
 }// }}}
 
+/*
+Used to unlink the custom length of a list from that list.
+The opposite of `link()`.
+
+careful that it actually gets called.
+------------------------------------
+*/
 unlink :: proc(array: any) {// {{{
     delete_key(&len_links, array.data)
 }// }}}
 
+/*
+Used to hide struct fields, map entries and list elements
+by their name, key or index.
+
+Please specify the exact string. 
+Plus, this applies universally for all windows and types, careful:
+```c
+ignore("test1")
+my_struct.test1 = 1; watch(my_struct)
+my_map["test1"] = 2; watch(my_map)
+```
+------------------------------------
+*/
 ignore :: proc(bad_names: ..string) { // {{{
     for name in bad_names {
         append(&ignored, hash_string(name))
     }
 }// }}}
 
-glfw_initialized: bool
+
+
 initialize_window :: proc(window: ^Window) {// {{{
     defer window.inited = true
     window.size = options.initial_window_size
 
-    if !glfw_initialized {
-        assert( bool(glfw.Init()) )
-        glfw_initialized = true
-    }
+    // glfw automatically checks whether it's initialized
+    assert( bool(glfw.Init()) )
     
     { // GLFW window {{{
         glfw.WindowHint(glfw.CONTEXT_VERSION_MAJOR, options.major_glfw_version)
@@ -345,7 +419,7 @@ draw_lhs_pane :: proc(window: ^Window) {// {{{
     defer nvg.ResetScissor(window.ctx)
     defer handle_scrolling(window, &window.lhs.scroll, window.lhs.pos, window.lhs.size)
 
-    { // cursor  
+    { // draw cursor  
         i := window.lhs.cursor // max(i-1,0)+1 = i
         y := window.lhs.pos.y - window.lhs.scroll.pos.y + options.font_size*f32(i)
         w := window.lhs.size.x
@@ -361,8 +435,7 @@ draw_lhs_pane :: proc(window: ^Window) {// {{{
     offset := offsets[0]
     for name, i in window.lhs.names {
         pos := window.lhs.pos + { offset, f32(i) * options.font_size } + base_pos
-        if i != 0 do pos.x += 16
-        draw_text(window, name, pos, window.palette.fg)
+        draw_text(window, name, pos + { 16*f32(i32(i != 0)), 0 }, window.palette.fg)
     }
     offset += 16
 
@@ -377,8 +450,6 @@ draw_lhs_pane :: proc(window: ^Window) {// {{{
         pos := window.lhs.pos + { offset, f32(i) * options.font_size } + base_pos
         draw_text(window, value, pos, window.fg)
     }
-
-    
 
 }// }}}
 
@@ -408,14 +479,14 @@ draw_rhs_pane :: proc(window: ^Window) {// {{{
     handle_scrolling(window, &window.rhs.binary_scroll, window.rhs.pos + offset, max_size)
 }// }}}
 
-draw_text_wrapped_rhs :: proc(window: ^Window, text: string, pos: Vector) -> (size: Vector) {// {{{
+@private draw_text_wrapped_rhs :: proc(window: ^Window, text: string, pos: Vector) -> (size: Vector) {// {{{
     max_size := window.rhs.size * { 1, 0.33333 }
     size = draw_text_wrapped(window, text, pos - window.rhs.value_scroll.pos, max_size, window.palette.fg)
     window.rhs.value_scroll.max = { 0, size.y }
     return max_size
 }// }}}
 
-draw_text_wrapped_binary :: proc(window: ^Window, text: string, pos: Vector, max_size: Vector) -> (size: Vector) {// {{{
+@private draw_text_wrapped_binary :: proc(window: ^Window, text: string, pos: Vector, max_size: Vector) -> (size: Vector) {// {{{
     text := strings.trim_right(text, " \n")
     original_pos := pos
     pos := pos - window.rhs.binary_scroll.pos
@@ -456,11 +527,21 @@ draw_text_wrapped_binary :: proc(window: ^Window, text: string, pos: Vector, max
     return {}
 }// }}}
 
-handle_keyboard :: proc(window: ^Window) {// {{{
+@private handle_keyboard :: proc(window: ^Window) {// {{{
     if window.handle == events.active_window {
         key :: is_key_pressed
         ctrl  :: proc() -> bool { return is_key_down(glfw.KEY_LEFT_CONTROL) }
         shift :: proc() -> bool { return is_key_down(glfw.KEY_LEFT_SHIFT) }
+
+        if (key(glfw.KEY_BACKSPACE) || key(glfw.KEY_LEFT)) && len(window.lhs.parents) > 0 {
+            window.lhs.cursor = pop(&window.lhs.parent_cursor)
+            window.lhs.viewed = pop(&window.lhs.parents)
+            pop(&window.lhs.parent_names)
+            window.refresh = true
+            reset_scroll(window)
+        }
+
+        if window.lhs.hidden do return  // !!! CAREFUL THIS MIGHT CANCEL YOUR SHIT
 
         previous_cursor   := window.lhs.cursor
         window.lhs.cursor += int( key(glfw.KEY_DOWN) || (!shift() && key(glfw.KEY_TAB)) )
@@ -473,7 +554,7 @@ handle_keyboard :: proc(window: ^Window) {// {{{
             window.refresh = true
         }
 
-        if len(window.lhs.names) == 1 {
+        if len(window.lhs.names) == 1 { // may be useless now
             window.lhs.cursor = pop(&window.lhs.parent_cursor)
             window.lhs.viewed = pop(&window.lhs.parents)
             pop(&window.lhs.parent_names)
@@ -503,19 +584,11 @@ handle_keyboard :: proc(window: ^Window) {// {{{
                 window.refresh = true
             }
         }
-
-        if (key(glfw.KEY_BACKSPACE) || key(glfw.KEY_LEFT)) && len(window.lhs.parents) > 0 {
-            window.lhs.cursor = pop(&window.lhs.parent_cursor)
-            window.lhs.viewed = pop(&window.lhs.parents)
-            pop(&window.lhs.parent_names)
-            window.refresh = true
-            reset_scroll(window)
-        }
     }
 }// }}}
 
-dragged_scrollbar: int
-handle_scrolling :: proc(window: ^Window, scroll: ^Scroll, pos, size: Vector) {// {{{
+dragged_scrollbar: int // id of dragged scrollbar or 0
+@private handle_scrolling :: proc(window: ^Window, scroll: ^Scroll, pos, size: Vector) {// {{{
 
     draw_vertical   := scroll.max.y != 0 && scroll.max.y > size.y  
 
@@ -572,7 +645,7 @@ handle_scrolling :: proc(window: ^Window, scroll: ^Scroll, pos, size: Vector) {/
     }
     
 }// }}}
-reset_scroll :: proc(window: ^Window) {// {{{
+@private reset_scroll :: proc(window: ^Window) {// {{{
     window.lhs.scroll.pos = {}
     window.rhs.value_scroll.pos = {}
     window.rhs.binary_scroll.pos = {}
@@ -580,7 +653,7 @@ reset_scroll :: proc(window: ^Window) {// {{{
 
 // ==================================== nanovg indirection ====================================
 
-key_callback :: proc "c" (window: glfw.WindowHandle, key: i32, scancode: i32, action: i32, mods: i32) {// {{{
+@private key_callback :: proc "c" (window: glfw.WindowHandle, key: i32, scancode: i32, action: i32, mods: i32) {// {{{
 
     is_friggs_window: bool
     for a_window in windows {
@@ -619,7 +692,7 @@ key_callback :: proc "c" (window: glfw.WindowHandle, key: i32, scancode: i32, ac
     }
 
 }// }}}
-scroll_callback :: proc "c" (window: glfw.WindowHandle, x, y: f64) {// {{{
+@private scroll_callback :: proc "c" (window: glfw.WindowHandle, x, y: f64) {// {{{
     is_friggs_window: bool
     for a_window in windows {
         if a_window.handle == window {
@@ -632,7 +705,7 @@ scroll_callback :: proc "c" (window: glfw.WindowHandle, x, y: f64) {// {{{
 
     events.scroll = { f32(x), f32(y) }       
 }// }}}
-draw_rect :: proc(window: ^Window, pos: Vector, size: Vector, color: [4] f32) {// {{{
+@private draw_rect :: proc(window: ^Window, pos: Vector, size: Vector, color: [4] f32) {// {{{
     nvg.BeginPath(window.ctx)
     nvg.Rect(window.ctx, pos.x, pos.y, size.x, size.y)
     nvg.FillColor(window.ctx, color)
@@ -640,7 +713,7 @@ draw_rect :: proc(window: ^Window, pos: Vector, size: Vector, color: [4] f32) {/
     nvg.ClosePath(window.ctx)
     nvg.FillColor(window.ctx, { 1, 1, 1, 1 })
 }// }}}
-draw_text_wrapped :: proc(window: ^Window, text: string, pos: Vector, size: Vector, color: [4] f32) -> Vector {// {{{
+@private draw_text_wrapped :: proc(window: ^Window, text: string, pos: Vector, size: Vector, color: [4] f32) -> Vector {// {{{
     _text := text
     assert(size.y / options.font_size < 128)
     lines: [128] nvg.Text_Row
@@ -656,7 +729,7 @@ draw_text_wrapped :: proc(window: ^Window, text: string, pos: Vector, size: Vect
 
     return { w, y }
 }// }}}
-draw_text :: proc(window: ^Window, text: string, pos: Vector, color: [4] f32) {// {{{
+@private draw_text :: proc(window: ^Window, text: string, pos: Vector, color: [4] f32) {// {{{
     should_draw := pos.y > -options.font_size
     should_draw &= pos.y < window.size.y + options.font_size
     if !should_draw do return 
@@ -667,7 +740,7 @@ draw_text :: proc(window: ^Window, text: string, pos: Vector, color: [4] f32) {/
     nvg.FillColor(window.ctx, { 1, 1, 1, 1 })
     return
 }// }}}
-text_width :: proc(window: ^Window, text: string) -> f32 {// {{{
+@private text_width :: proc(window: ^Window, text: string) -> f32 {// {{{
     @static base_width: f32
     if base_width == 0 {
         bounds: [4] f32
@@ -676,10 +749,10 @@ text_width :: proc(window: ^Window, text: string) -> f32 {// {{{
     // if this causes a bug for you, you should try Monocraft. It's good for your soul.
     return base_width * f32(len(text))
 }// }}}
-scissor :: proc(window: ^Window, pos, size: Vector) {// {{{
+@private scissor :: proc(window: ^Window, pos, size: Vector) {// {{{
     nvg.Scissor(window.ctx, pos.x, pos.y, size.x, size.y)
 }// }}}
-post_empty_event :: proc() {// {{{
+@private post_empty_event :: proc() {// {{{
     // Wayland:
     //   1. ignores WaitEventsTimeout
     //   2. resets KEY_REPEAT on PostEmptyEvent
@@ -688,9 +761,9 @@ post_empty_event :: proc() {// {{{
     glfw.PostEmptyEvent()
 }// }}}
 
-is_key_down     :: proc "c" (key: i32) -> bool { return find(events.down[:events.num_down], key) != -1 }
-is_key_pressed  :: proc "c" (key: i32) -> bool { return find(events.pressed[:events.num_pressed], key) != -1 }
-is_key_released :: proc "c" (key: i32) -> bool { return find(events.released[:events.num_released], key) != -1 }
+@private is_key_down     :: proc "c" (key: i32) -> bool { return find(events.down[:events.num_down], key) != -1 }
+@private is_key_pressed  :: proc "c" (key: i32) -> bool { return find(events.pressed[:events.num_pressed], key) != -1 }
+@private is_key_released :: proc "c" (key: i32) -> bool { return find(events.released[:events.num_released], key) != -1 }
 
 
 
