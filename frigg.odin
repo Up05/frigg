@@ -395,14 +395,15 @@ render_frame :: proc(window: ^Window) {// {{{
     // draw_text(window, frame_took, { window.size.x - text_width(window, frame_took) - 8, 0 }, window.fg )
 
     the_hash := hash(window.lhs.viewed, { window = window })
-    defer window.previous_hash = the_hash
+    
 
     if window.previous_hash != the_hash {
         @static last_update: time.Tick
         update_freq := Duration(1000 / options.update_tps) * ms
-        if update_freq < time.tick_diff(last_update, now()) {
+        if window.refresh || update_freq < time.tick_diff(last_update, now()) {
             update_lhs(window)
             update_rhs(window)
+            window.previous_hash = the_hash
             last_update = now()
         }
         post_empty_event()
