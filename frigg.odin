@@ -343,8 +343,7 @@ initialize_window :: proc(window: ^Window) {// {{{
         )
     }// }}}
 
-    nvg.CreateFont(window.ctx, "mono", "font.ttf")
-    // TODO CreateFontMem
+    nvg.CreateFontMem(window.ctx, "mono", #load("font.ttf"), false)
     nvg.FontSize(window.ctx, options.font_size)
 
     window.exists    = true
@@ -395,7 +394,6 @@ render_frame :: proc(window: ^Window) {// {{{
     // draw_text(window, frame_took, { window.size.x - text_width(window, frame_took) - 8, 0 }, window.fg )
 
     the_hash := hash(window.lhs.viewed, { window = window })
-    
 
     if window.previous_hash != the_hash {
         @static last_update: time.Tick
