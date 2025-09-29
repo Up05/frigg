@@ -12,6 +12,11 @@ Frigg does not currently work on systems with OpenGL drivers.
 
 SOA pointers aren't really suported, they're not hard to implement, I just... kind of... couldn't be bothered...
 
+Running the demo:  
+<img width="1920" height="1020" alt="image" src="https://github.com/user-attachments/assets/f9b5d0d8-9161-4c26-8985-93a202df820d" />
+
+
+
 # Usage
 
 Download frigg and add it as a library in your project:
