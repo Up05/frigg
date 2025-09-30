@@ -1516,7 +1516,7 @@ hash :: proc(value: any, state: HashState, level := 0) -> u32 {// {{{
     lhs_clear(window)
     free_all(window.lhs_alloc)
     value := window.lhs.viewed
-    lhs_add(window, window.lhs.parent_names[len(window.lhs.parent_names) - 1], "", "", nil, window.lhs_alloc)
+    lhs_add(window, back(window.lhs.parent_names), "", "", nil, window.lhs_alloc)
 
     the_type := reflect.type_info_base(type_info_of(value.id))
     #partial switch real_type in the_type.variant {
@@ -1697,7 +1697,15 @@ hash :: proc(value: any, state: HashState, level := 0) -> u32 {// {{{
         update_lhs(window)
 
     case: 
+        window.lhs.viewed = value
         lhs_add(window, "", "", "", nil, window.lhs_alloc) 
+        
+        window.rhs.viewed = {
+            name = back(window.lhs.parent_names),
+            type = soft_up_to(fmt.aprint(value.id, allocator = window.lhs_alloc), 24),
+            value = value,
+        }
+        
         window.lhs.hidden = true
     }
 }// }}}
