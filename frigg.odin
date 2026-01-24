@@ -2016,9 +2016,9 @@ hash :: proc(value: any, state: HashState, level := 0) -> u32 {// {{{
     the_type := reflect.type_info_base(type_info_of(array.id))
     #partial switch type_info in the_type.variant {
     case reflect.Type_Info_Map:              panic("I don't know...")
-    case reflect.Type_Info_Slice:            return (transmute(^runtime.Raw_Slice) array.data).len
-    case reflect.Type_Info_String:           return (transmute(^runtime.Raw_Slice) array.data).len
-    case reflect.Type_Info_Dynamic_Array:    return (transmute(^runtime.Raw_Slice) array.data).len
+    case reflect.Type_Info_String:           return 1
+    case reflect.Type_Info_Slice:            return type_info.elem_size
+    case reflect.Type_Info_Dynamic_Array:    return type_info.elem_size
     case reflect.Type_Info_Array:            return type_info.elem_size
     case reflect.Type_Info_Matrix:           return type_info.elem_size
     case reflect.Type_Info_Simd_Vector:      return type_info.elem_size

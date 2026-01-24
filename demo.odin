@@ -27,6 +27,7 @@ test : struct {
     n: int,
     o: [^] int,
     p: any,
+    r: [] int,
 }
 
 main :: proc() {
@@ -37,7 +38,8 @@ main :: proc() {
 
     for i in 0..<640 { test.e[fmt.aprintf("test key #%d", i)] = 3.14159 * f32(i) }
     test.f = 42
-    test.g = "str2"
+    // test.g = "str2"
+    test.g = G
     test.c = {
         1, 12, 123,
         41, 9, 12312412,
@@ -60,8 +62,58 @@ main :: proc() {
     for i in 0..<5 do test.o[i] = i * 3
 
     test.p = test.c
+    test.r = test.j[:]
 
     window := watch(test, false)
 
     for !render_frame_for_all() { test.z[1] += 1 }
 }
+
+G :: `
+[section1]
+
+# table = { a = 5,  	b = 5, }
+
+table = { 
+    a0 = 5, 
+    a1 = 5, 
+    a2 = 5, 
+    a3 = 5, 
+    a4 = 5, 
+    a5 = 5, 
+    a6 = 5, 
+    a7 = 5, 
+    a8 = 5, 
+    a9 = 5, 
+    a10 = 5, 
+    a11 = 5, 
+    a12 = 5, 
+    a13 = 5, 
+    a14 = 5, 
+    a15 = 5, 
+    a16 = 5, 
+    a17 = 5, 
+    a18 = 5, 
+    a19 = 5, 
+    a20 = 5, 
+    a21 = 5, 
+    a22 = 5, 
+    a23 = 5, 
+    a24 = 5, 
+    a25 = 5, 
+    a26 = 5, 
+    a27 = 5, 
+    a28 = 5, 
+    b29 = 5, 
+    a22 = 5,
+    a23 = 5,
+     a34 = 5,
+     a45 = 5,
+     a56 = 5,
+     a67 = 5,
+     a78 = 5,
+     b89 = 5,
+}
+
+
+`
