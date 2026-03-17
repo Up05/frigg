@@ -1476,7 +1476,7 @@ hash :: proc(value: any, state: HashState, level := 0) -> u32 {// {{{
     hash_array :: proc(state: HashState, value: any, level: int) {
         hash_basic(state, value)
         iterator: int
-        for value in reflect.iterate_array(value, &iterator) { 
+        for value, _ in reflect.iterate_array(value, &iterator) { 
             if reflect.is_procedure(type_info_of(value.id)) do continue
             hash(value, state, level + 1) 
         }
@@ -1849,7 +1849,7 @@ hash :: proc(value: any, state: HashState, level := 0) -> u32 {// {{{
 
 @private is_memory_safe :: proc(pointer: rawptr, size: int, allocator: Allocator) -> bool {// {{{
     if pointer == nil do return false
-    page_size := uintptr(os.get_page_size())
+    page_size := uintptr(mem.DEFAULT_PAGE_SIZE)
 
     // align to page by setting all (non relevant) bits to 0. "&~" is "and-not"
     // '.. - 1' is to get a bunch of 0x111 instead of 0x1000
@@ -2029,7 +2029,7 @@ hash :: proc(value: any, state: HashState, level := 0) -> u32 {// {{{
 }// }}}
 
 @private are_we_wayland :: proc() -> bool {// {{{
-    result := os.get_env("WAYLAND_DISPLAY")
+    result := os.get_env("WAYLAND_DISPLAY", context.allocator)
     defer delete_string(result)
     return result != ""
 }// }}}
