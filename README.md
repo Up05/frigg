@@ -6,7 +6,7 @@ Give the library a value; it will open a window.
 Use the arrow keys to browse the associated memory values.
 
 Running the demo:  
-<img width="1920" height="1020" alt="image" src="https://github.com/user-attachments/assets/f9b5d0d8-9161-4c26-8985-93a202df820d" />
+![Demo](demo.png "demo")
 
 # Usage
 
