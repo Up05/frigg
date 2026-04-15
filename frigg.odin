@@ -829,6 +829,8 @@ format_value_small :: proc(window: ^Window, value: any, level := 0) -> string {/
 
     text : string
 
+    reflect_Fixed_Dynamic_Array :: reflect.Type_Info_Fixed_Capacity_Dynamic_Array
+
     the_type := reflect.type_info_base(type_info_of(value.id))
     switch real_type in the_type.variant {
     case reflect.Type_Info_Any:              text = format_value_small(window, collapse_any(window, value), level + 1)
@@ -855,6 +857,7 @@ format_value_small :: proc(window: ^Window, value: any, level := 0) -> string {/
     case reflect.Type_Info_Array:            text = format_array(window, value) 
     case reflect.Type_Info_Enumerated_Array: text = format_array(window, value)
     case reflect.Type_Info_Dynamic_Array:    text = format_array(window, value)
+    case reflect_Fixed_Dynamic_Array:        text = format_array(window, value)
     case reflect.Type_Info_Slice:            text = format_array(window, value) 
     case reflect.Type_Info_Simd_Vector:      text = format_array(window, value) 
     case reflect.Type_Info_Matrix:           text = format_array(window, value) 
@@ -1029,6 +1032,8 @@ format_value_big :: proc(window: ^Window, value: any, level := 0) -> string {// 
     if level > 15 do return "<self>"
     text : string
 
+    reflect_Fixed_Dynamic_Array :: reflect.Type_Info_Fixed_Capacity_Dynamic_Array
+
     the_type := reflect.type_info_base(type_info_of(value.id))
     switch real_type in the_type.variant {
     case reflect.Type_Info_Any:              text = format_value_big(window, collapse_any(window, value), level + 1)
@@ -1055,6 +1060,7 @@ format_value_big :: proc(window: ^Window, value: any, level := 0) -> string {// 
     case reflect.Type_Info_Array:            text = format_array(window, value) 
     case reflect.Type_Info_Enumerated_Array: text = format_array(window, value)
     case reflect.Type_Info_Dynamic_Array:    text = format_array(window, value)
+    case reflect_Fixed_Dynamic_Array:        text = format_array(window, value)
     case reflect.Type_Info_Slice:            text = format_array(window, value) 
     case reflect.Type_Info_Simd_Vector:      text = format_array(window, value) 
     case reflect.Type_Info_Matrix:           text = format_matrix(window, value) 
@@ -1285,6 +1291,8 @@ format_value_binary :: proc(window: ^Window, value: any, level := 0) -> string {
     if level > 15 do return "<self>"
     text : string
 
+    reflect_Fixed_Dynamic_Array :: reflect.Type_Info_Fixed_Capacity_Dynamic_Array
+
     the_type := reflect.type_info_base(type_info_of(value.id))
     switch real_type in the_type.variant {
     case reflect.Type_Info_Any:              text = format_value_binary(window, collapse_any(window, value), level + 1)
@@ -1314,6 +1322,7 @@ format_value_binary :: proc(window: ^Window, value: any, level := 0) -> string {
     case reflect.Type_Info_Multi_Pointer:    text = format_multi_pointer(window, value, level) 
 
     case reflect.Type_Info_Dynamic_Array:    text = format_array(window, value)
+    case reflect_Fixed_Dynamic_Array:        text = format_array(window, value)
     case reflect.Type_Info_Slice:            text = format_array(window, value) 
     case reflect.Type_Info_String:           text = format_array(window, value) 
 
@@ -1424,6 +1433,8 @@ hash :: proc(value: any, state: HashState, level := 0) -> u32 {// {{{
         return 0
     }
 
+    reflect_Fixed_Dynamic_Array :: reflect.Type_Info_Fixed_Capacity_Dynamic_Array
+
     the_type := reflect.type_info_base(type_info_of(value.id))
     switch type in the_type.variant {
     case reflect.Type_Info_Integer:          hash_basic(state, value)  
@@ -1448,6 +1459,7 @@ hash :: proc(value: any, state: HashState, level := 0) -> u32 {// {{{
     case reflect.Type_Info_String:           hash_array(state, value, level + 1)  
     case reflect.Type_Info_Slice:            hash_array(state, value, level + 1)  
     case reflect.Type_Info_Dynamic_Array:    hash_array(state, value, level + 1)  
+    case reflect_Fixed_Dynamic_Array:        hash_array(state, value, level + 1)
 
     case reflect.Type_Info_Any:              hash(value, state, level + 1) 
     case reflect.Type_Info_Map:              hash_map(state, value, level + 1)
@@ -1997,6 +2009,8 @@ hash :: proc(value: any, state: HashState, level := 0) -> u32 {// {{{
         }
     }
 
+    reflect_Fixed_Dynamic_Array :: reflect.Type_Info_Fixed_Capacity_Dynamic_Array
+
     the_type := reflect.type_info_base(type_info_of(array.id))
     #partial switch real_type in the_type.variant {
     case reflect.Type_Info_Map:              return map_len(array)
@@ -2006,6 +2020,8 @@ hash :: proc(value: any, state: HashState, level := 0) -> u32 {// {{{
     case reflect.Type_Info_Matrix:           return real_type.column_count * real_type.row_count
     case reflect.Type_Info_Simd_Vector:      return real_type.count
     case reflect.Type_Info_Dynamic_Array:    return slice_len(array)
+    case reflect_Fixed_Dynamic_Array:        return slice_len(array)
+
     case reflect.Type_Info_Enumerated_Array: return real_type.count
     case:
     }
