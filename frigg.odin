@@ -1861,7 +1861,7 @@ hash :: proc(value: any, state: HashState, level := 0) -> u32 {// {{{
 
 @private is_memory_safe :: proc(pointer: rawptr, size: int, allocator: Allocator) -> bool {// {{{
     if pointer == nil do return false
-    page_size := uintptr(mem.DEFAULT_PAGE_SIZE)
+    page_size := uintptr(mem.PAGE_SIZE)
 
     // align to page by setting all (non relevant) bits to 0. "&~" is "and-not"
     // '.. - 1' is to get a bunch of 0x111 instead of 0x1000
